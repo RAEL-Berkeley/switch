@@ -40,11 +40,16 @@ INSTALLATION WITH PYTHON VIRTUAL ENVIRONMENTS FOR DEVELOPMENT
         git clone https://github.com/switch-model/switch.git "$SRC_DIR"
 
 4. Create a virtual environment in your project directory, and install switch
+<<<<<<< HEAD
    and its prerequisites (if using Windows, replace "bin" with "Scripts"):
+=======
+   and its prerequisites.
+>>>>>>> dc107d0... Adding instructions for using virtual environments. For the moment, I’m treating these as advanced installation instructions for developers and power-users, but eventually it might be nice to integrate these into the standard installation instructions.
         cd "$PROJECT_DIR"
         pip install virtualenv
         virtualenv venv
         source venv/bin/activate
+<<<<<<< HEAD
         pip install --editable "$SRC_DIR"[extra_requirements]
 
    Remember to replace "extra_requirements" with a comma-separated list with
@@ -67,6 +72,15 @@ INSTALLATION WITH PYTHON VIRTUAL ENVIRONMENTS FOR DEVELOPMENT
         pip install --editable "$SRC_DIR"[extra_requirements]
 
 5. [Optional] Record the exact version of every library you are using so you can 
+=======
+        pip install --editable "$SRC_DIR"
+
+   Note: The --editable flag ensures that any changes to your downloaded copy
+   of switch will be immediately reflected to your installed copy in the
+   virtual environment.
+
+5. Record the exact version of every library you are using so you can 
+>>>>>>> dc107d0... Adding instructions for using virtual environments. For the moment, I’m treating these as advanced installation instructions for developers and power-users, but eventually it might be nice to integrate these into the standard installation instructions.
    precisely replicate this setup in the future. 
         pip freeze > requirements.txt
    Without this step, you are at higher risk of not being able to readily
@@ -83,6 +97,9 @@ EXECUTION
        source venv/bin/activate
 3. Execute switch like normal
        switch solve ...
+<<<<<<< HEAD
 4. When finished development work, remember to leave the virtual
    environment with the following command:
        deactivate
+=======
+>>>>>>> dc107d0... Adding instructions for using virtual environments. For the moment, I’m treating these as advanced installation instructions for developers and power-users, but eventually it might be nice to integrate these into the standard installation instructions.

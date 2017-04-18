@@ -5,6 +5,9 @@
 gurobi.log
 switch_model.egg-info/
 venv
+<<<<<<< HEAD
 build*/
 dist*/
 autodoc*
+=======
+>>>>>>> dc107d0... Adding instructions for using virtual environments. For the moment, I’m treating these as advanced installation instructions for developers and power-users, but eventually it might be nice to integrate these into the standard installation instructions.
