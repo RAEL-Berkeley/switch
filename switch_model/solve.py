@@ -26,6 +26,9 @@ from switch_model.utilities import (
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
 
+#paty's adition for debugging:
+from IPython import embed
+
 
 def main(args=None, return_model=False, return_instance=False):
 
@@ -134,6 +137,104 @@ def main(args=None, return_model=False, return_instance=False):
             else:
                 return instance
 
+<<<<<<< HEAD
+=======
+    # Look out for outdated inputs. This has to happen before modules.txt is
+    # parsed to avoid errors from incompatible files.
+    parser = _ArgumentParser(allow_abbrev=False, add_help=False)
+    add_module_args(parser)
+    module_options = parser.parse_known_args(args=args)[0]
+    if(os.path.exists(module_options.inputs_dir) and
+       do_inputs_need_upgrade(module_options.inputs_dir)):
+        do_upgrade = query_yes_no(
+            ("Warning! Your inputs directory needs to be upgraded. "
+             "Do you want to auto-upgrade now? We'll keep a backup of "
+             "this current version."))
+        if do_upgrade:
+            upgrade_inputs(module_options.inputs_dir)
+        else:
+            print "Inputs need upgrade. Consider `switch upgrade --help`. Exiting."
+            sys.stdout = stdout_copy
+            return -1
+
+    # build a module list based on configuration options, and add
+    # the current module (to register define_arguments callback)
+    modules = get_module_list(args)
+    
+    # Patch pyomo if needed, to allow reconstruction of expressions.
+    # This must be done before the model is constructed.
+    patch_pyomo()
+
+    # Define the model
+    model = create_model(modules, args=args)
+
+    # Add any suffixes specified on the command line (usually only iis)
+    add_extra_suffixes(model)
+    
+    # return the model as-is if requested
+    if return_model and not return_instance:
+        return model
+
+    if model.options.reload_prior_solution:
+        if not os.path.isdir(model.options.outputs_dir):
+            raise IOError("Specified outputs directory for solution exploration does not exist.")
+
+    # get a list of modules to iterate through
+    iterate_modules = get_iteration_list(model)
+    
+    if model.options.verbose:
+        creation_time = time.time()
+        print "\n======================================================================="
+        print "SWITCH model created in {:.2f} s.\nArguments:".format(creation_time - start_time)
+        print ", ".join(k+"="+repr(v) for k, v in model.options.__dict__.items() if v)
+        print "Modules:\n"+", ".join(m for m in modules)
+        if iterate_modules:
+            print "Iteration modules:", iterate_modules
+        print "=======================================================================\n"
+        print "Loading inputs..."
+
+    # create an instance
+    instance = model.load_inputs()
+    instance.pre_solve()
+    instantiation_time = time.time()
+    if model.options.verbose:
+        print "Inputs loaded in {:.2f} s.\n".format(instantiation_time - creation_time)
+        
+    #Paty's addition for debugging:
+    #embed()
+    
+    # return the instance as-is if requested
+    if return_instance:
+        if return_model:
+            return (model, instance)
+        else:
+            return instance
+
+    if model.options.reload_prior_solution:
+        # read variable values from previously solved model
+        import csv
+        var_objects = [c for c in instance.component_objects()
+            if isinstance(c,pyomo.core.base.Var)]
+        def _convert_if_numeric(s):
+            try:
+                return float(s)
+            except ValueError:
+                return s
+        for var in var_objects:
+            if '{}.tab'.format(var.name) not in os.listdir(model.options.outputs_dir):
+                raise RuntimeError("Tab output file for variable {} cannot be found in outputs directory. Exiting.".format(var.name))
+            with open(os.path.join(model.options.outputs_dir, '{}.tab'.format(var.name)),'r') as f:
+                reader = csv.reader(f, delimiter='\t')
+                # skip headers
+                next(reader)
+                for row in reader:
+                    index = (_convert_if_numeric(i) for i in row[:-1])
+                    var[index].value = float(row[-1])
+            print 'Loaded variable {} values into instance.'.format(var.name)
+        output_loading_time = time.time()
+        print 'Finished loading previous results into model instance in {:.2f} s.'.format(output_loading_time - instantiation_time)
+    else:
+>>>>>>> 6f1664a... Some additions: wecc, imported IPython to use embed() for debugging, transmission lines parameter typo, and started a document for debugging.
         # make sure the outputs_dir exists (used by some modules during iterate)
         # use a race-safe approach in case this code is run in parallel
         try:
@@ -152,6 +253,7 @@ def main(args=None, return_model=False, return_instance=False):
                     .format(timer.step_time())
                 )
         else:
+<<<<<<< HEAD
             # solve the model (reports time for each step as it goes)
             if iterate_modules:
                 if instance.options.verbose:
@@ -187,6 +289,29 @@ def main(args=None, return_model=False, return_instance=False):
     # end of LogOutput block
 
     if instance.options.interact:
+=======
+            results = solve(instance)
+            if model.options.verbose:
+                print "Optimization termination condition was {}.\n".format(
+                    results.solver.termination_condition)
+		#Paty's addition for debugging:
+    	#embed()
+    
+        # report/save results
+        if model.options.verbose:
+            post_solve_start_time = time.time()
+            print "Executing post solve functions..."
+        instance.post_solve()
+        if model.options.verbose:
+            post_solve_end_time = time.time()
+            print "Post solve processing completed in {:.2f} s.".format(
+                post_solve_end_time - post_solve_start_time)
+
+    # return stdout to original
+    sys.stdout = stdout_copy
+
+    if model.options.interact or model.options.reload_prior_solution:
+>>>>>>> 6f1664a... Some additions: wecc, imported IPython to use embed() for debugging, transmission lines parameter typo, and started a document for debugging.
         m = instance  # present the solved model as 'm' for convenience
         banner = (
             "\n"
@@ -734,10 +859,22 @@ def solve(model):
     if model.options.verbose:
         print("Solved model. Total time spent in solver: {:2f} s.".format(timer.step_time()))
 
+<<<<<<< HEAD
     # Treat infeasibility as an error, rather than trying to load and save the results
     # (note: in this case, results.solver.status may be SolverStatus.warning instead of
     # SolverStatus.error)
     if (results.solver.termination_condition == TerminationCondition.infeasible):
+=======
+    model.solutions.load_from(results)
+# Paty's addition for debugging:
+    embed()
+
+    # Only return if the model solved correctly, otherwise throw a useful error
+    if(results.solver.status == SolverStatus.ok and
+       results.solver.termination_condition == TerminationCondition.optimal):
+        return results
+    elif (results.solver.termination_condition == TerminationCondition.infeasible):
+>>>>>>> 6f1664a... Some additions: wecc, imported IPython to use embed() for debugging, transmission lines parameter typo, and started a document for debugging.
         if hasattr(model, "iis"):
             print("Model was infeasible; irreducibly inconsistent set (IIS) returned by solver:")
             print("\n".join(sorted(c.name for c in model.iis)))

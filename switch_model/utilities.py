@@ -340,6 +340,7 @@ def check_mandatory_components(model, *mandatory_model_components):
                     format(component_name))
         elif o_class == 'IndexedParam':
             if len(obj) != len(obj._index):
+<<<<<<< HEAD
                 missing_index_elements = [v for v in set(obj._index) - set( obj.sparse_keys())]
                 raise ValueError(
                     "Values are not provided for every element of the "
@@ -347,6 +348,14 @@ def check_mandatory_components(model, *mandatory_model_components):
                     "Missing data for {} values, including: {}"
                     .format(component_name, len(missing_index_elements), missing_index_elements[:10])
                 )
+=======
+            	missing_index_elements = [v for v in set(obj._index) - set( obj.sparse_keys())]
+                raise ValueError(
+                    ("Values are not provided for every element of the "
+                     "mandatory parameter '{}'. "
+                     "Missing data for {} values, including: {}"
+                    ).format(component_name, len(missing_index_elements), missing_index_elements[:10]))
+>>>>>>> 6f1664a... Some additions: wecc, imported IPython to use embed() for debugging, transmission lines parameter typo, and started a document for debugging.
         elif o_class == 'IndexedSet':
             if len(obj) != len(obj._index):
                 raise ValueError(
