@@ -77,10 +77,18 @@ model.InvestmentCost = Expression(rule=lambda m: sum(
                 calc_annual_costs_in_period(m, p) * m.bring_annual_costs_to_base_year[p]
                 for p in m.PERIODS))
 
+<<<<<<< HEAD
 model.OperationCost = Expression(rule=lambda m:
+=======
+model.OperationCost = Expression(rule=lambda m: 
+>>>>>>> f7f89f8... Josiah's updates to 3zone_toy_stochastic_PySP example
 	sum(
 		sum(calc_tp_costs_in_period(m, t) for t in m.TPS_IN_PERIOD[p]
 		   ) * m.bring_annual_costs_to_base_year[p]
 	for p in m.PERIODS))
 
+<<<<<<< HEAD
 print("model successfully loaded...")
+=======
+print "model successfully loaded..."
+>>>>>>> f7f89f8... Josiah's updates to 3zone_toy_stochastic_PySP example
