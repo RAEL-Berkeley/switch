@@ -17,13 +17,9 @@ import getpass
 import os
 import sys
 import time
-
 import psycopg2
 import sshtunnel
 
-
-# Set python to stream output unbuffered.
-#sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
 def write_tab(fname, headers, cursor):
     with open(fname + '.tab', 'w') as f: # Paty: open() opens file named fname and only allows us to (re)write on it ('w'). "with" keyword ensures the file is closed at the end of the function. 
@@ -96,7 +92,8 @@ def main():
 	# Start an ssh tunnel because the database only permits local connections
 	tunnel = sshtunnel.SSHTunnelForwarder(
 		args.host,
-		ssh_pkey= os.path.expanduser('~') + "/.ssh/id_rsa",
+		ssh_username=args.user,
+		ssh_pkey=os.path.join(os.path.expanduser('~'), ".ssh", "id_rsa"),
 		remote_bind_address=('127.0.0.1', args.port)
 	)
 	tunnel.start()
