@@ -867,7 +867,7 @@ def solve(model):
 =======
     model.solutions.load_from(results)
 # Paty's addition for debugging:
-    embed()
+#    embed()
 
     # Only return if the model solved correctly, otherwise throw a useful error
     if(results.solver.status == SolverStatus.ok and
