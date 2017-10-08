@@ -5,7 +5,10 @@
 
 Matthias Fripp <mfripp@hawaii.edu>
 Rodrigo Henriquez <rhenriqueza@uc.cl>
+<<<<<<< HEAD
 Patricia Hidalgo-Gonzalez <patricia.hidalgo.g@berkeley.edu>
+=======
+>>>>>>> 3f04c68... Partial progress: adding new module for res by load zone and period.
 Josiah Johnston <siah@berkeley.edu>
 Benjamin Maluenda <bmaluend@uc.cl>
 Ana Mileva
