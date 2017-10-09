@@ -295,7 +295,7 @@ def main(args=None, return_model=False, return_instance=False):
                 print "Optimization termination condition was {}.\n".format(
                     results.solver.termination_condition)
 		#Paty's addition for debugging:
-    	embed()
+    	#embed()
     
         # report/save results
         if model.options.verbose:
@@ -867,7 +867,7 @@ def solve(model):
 =======
     model.solutions.load_from(results)
 # Paty's addition for debugging:
-    embed()
+ #   embed()
 
     # Only return if the model solved correctly, otherwise throw a useful error
     if(results.solver.status == SolverStatus.ok and
