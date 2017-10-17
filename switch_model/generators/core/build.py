@@ -565,7 +565,11 @@ def load_inputs(mod, switch_data, inputs_dir):
         switch_data.load(filename=multi_fuels_path)
 
 
+<<<<<<< HEAD
 def post_solve(m, outdir):
+=======
+def post_solve(instance, outdir):
+>>>>>>> dab6811... Export Bugfix: an accidental set crossproduct made a datafile that was 26 GB instead of 588 kB. I merged the columns from gen_cap_complete_info.tab into gen_cap.tab and removed the extraneous set crossproduct.
     write_table(
 <<<<<<< HEAD
         m,
@@ -584,6 +588,7 @@ def post_solve(m, outdir):
 =======
         instance, instance.GEN_PERIODS,
         output_file=os.path.join(outdir, "gen_cap.txt"),
+<<<<<<< HEAD
         headings=("GENERATION_PROJECT", "PERIOD", "GenCapacity",
                   "GenCapitalCosts", "GenFixedOMCosts"),
         values=lambda m, gp: gp + (m.GenCapacity[gp], m.GenCapitalCosts[gp],
@@ -602,3 +607,14 @@ def post_solve(m, outdir):
         						m.GenCapitalCosts[gp],
                                 m.GenFixedOMCosts[gp]))
 >>>>>>> 7a67ead... More on exporting results.
+=======
+        headings=("GENERATION_PROJECT", "PERIOD", 
+                  "gen_tech", "gen_load_zone", "gen_energy_source",
+                  "GenCapacity", "GenCapitalCosts", "GenFixedOMCosts"),
+        # Indexes are provided as a tuple, so put (g,p) in parentheses to
+        # access the two components of the index individually.
+        values=lambda m, (g, p): (
+            g, p, 
+            m.gen_tech[g], m.gen_load_zone[g], m.gen_energy_source[g],
+            m.GenCapacity[g, p], m.GenCapitalCosts[g, p], m.GenFixedOMCosts[g, p]))
+>>>>>>> dab6811... Export Bugfix: an accidental set crossproduct made a datafile that was 26 GB instead of 588 kB. I merged the columns from gen_cap_complete_info.tab into gen_cap.tab and removed the extraneous set crossproduct.
