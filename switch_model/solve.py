@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 # Copyright (c) 2015-2019 The Switch Authors. All rights reserved.
 # Licensed under the Apache License, Version 2.0, which is in the LICENSE file.
+<<<<<<< HEAD
 from __future__ import print_function
+=======
+import sys, os, time, shlex, re
+import cPickle as pickle
+>>>>>>> a6d4c39... Save the complete results & solution after optimization, and use it to enable more complete loading of an instance when reload_prior_solution is requested. Also provide reasonable default behavior in utilities.create_model() when module_list isn't provided (to aid python command line debugging/ad-hoc scripting). And fix old tests that were breaking.
 
 from pyomo.environ import *
 from pyomo.opt import SolverFactory, SolverStatus, TerminationCondition
@@ -137,104 +142,6 @@ def main(args=None, return_model=False, return_instance=False):
             else:
                 return instance
 
-<<<<<<< HEAD
-=======
-    # Look out for outdated inputs. This has to happen before modules.txt is
-    # parsed to avoid errors from incompatible files.
-    parser = _ArgumentParser(allow_abbrev=False, add_help=False)
-    add_module_args(parser)
-    module_options = parser.parse_known_args(args=args)[0]
-    if(os.path.exists(module_options.inputs_dir) and
-       do_inputs_need_upgrade(module_options.inputs_dir)):
-        do_upgrade = query_yes_no(
-            ("Warning! Your inputs directory needs to be upgraded. "
-             "Do you want to auto-upgrade now? We'll keep a backup of "
-             "this current version."))
-        if do_upgrade:
-            upgrade_inputs(module_options.inputs_dir)
-        else:
-            print "Inputs need upgrade. Consider `switch upgrade --help`. Exiting."
-            sys.stdout = stdout_copy
-            return -1
-
-    # build a module list based on configuration options, and add
-    # the current module (to register define_arguments callback)
-    modules = get_module_list(args)
-    
-    # Patch pyomo if needed, to allow reconstruction of expressions.
-    # This must be done before the model is constructed.
-    patch_pyomo()
-
-    # Define the model
-    model = create_model(modules, args=args)
-
-    # Add any suffixes specified on the command line (usually only iis)
-    add_extra_suffixes(model)
-    
-    # return the model as-is if requested
-    if return_model and not return_instance:
-        return model
-
-    if model.options.reload_prior_solution:
-        if not os.path.isdir(model.options.outputs_dir):
-            raise IOError("Specified outputs directory for solution exploration does not exist.")
-
-    # get a list of modules to iterate through
-    iterate_modules = get_iteration_list(model)
-    
-    if model.options.verbose:
-        creation_time = time.time()
-        print "\n======================================================================="
-        print "SWITCH model created in {:.2f} s.\nArguments:".format(creation_time - start_time)
-        print ", ".join(k+"="+repr(v) for k, v in model.options.__dict__.items() if v)
-        print "Modules:\n"+", ".join(m for m in modules)
-        if iterate_modules:
-            print "Iteration modules:", iterate_modules
-        print "=======================================================================\n"
-        print "Loading inputs..."
-
-    # create an instance
-    instance = model.load_inputs()
-    instance.pre_solve()
-    instantiation_time = time.time()
-    if model.options.verbose:
-        print "Inputs loaded in {:.2f} s.\n".format(instantiation_time - creation_time)
-        
-    #Paty's addition for debugging:
-    #embed()
-    
-    # return the instance as-is if requested
-    if return_instance:
-        if return_model:
-            return (model, instance)
-        else:
-            return instance
-
-    if model.options.reload_prior_solution:
-        # read variable values from previously solved model
-        import csv
-        var_objects = [c for c in instance.component_objects()
-            if isinstance(c,pyomo.core.base.Var)]
-        def _convert_if_numeric(s):
-            try:
-                return float(s)
-            except ValueError:
-                return s
-        for var in var_objects:
-            if '{}.tab'.format(var.name) not in os.listdir(model.options.outputs_dir):
-                raise RuntimeError("Tab output file for variable {} cannot be found in outputs directory. Exiting.".format(var.name))
-            with open(os.path.join(model.options.outputs_dir, '{}.tab'.format(var.name)),'r') as f:
-                reader = csv.reader(f, delimiter='\t')
-                # skip headers
-                next(reader)
-                for row in reader:
-                    index = (_convert_if_numeric(i) for i in row[:-1])
-                    var[index].value = float(row[-1])
-            print 'Loaded variable {} values into instance.'.format(var.name)
-        output_loading_time = time.time()
-        print 'Finished loading previous results into model instance in {:.2f} s.'.format(output_loading_time - instantiation_time)
-    else:
->>>>>>> 6f1664a... Some additions: wecc, imported IPython to use embed() for debugging, transmission lines parameter typo, and started a document for debugging.
         # make sure the outputs_dir exists (used by some modules during iterate)
         # use a race-safe approach in case this code is run in parallel
         try:
@@ -253,7 +160,6 @@ def main(args=None, return_model=False, return_instance=False):
                     .format(timer.step_time())
                 )
         else:
-<<<<<<< HEAD
             # solve the model (reports time for each step as it goes)
             if iterate_modules:
                 if instance.options.verbose:
@@ -289,29 +195,6 @@ def main(args=None, return_model=False, return_instance=False):
     # end of LogOutput block
 
     if instance.options.interact:
-=======
-            results = solve(instance)
-            if model.options.verbose:
-                print "Optimization termination condition was {}.\n".format(
-                    results.solver.termination_condition)
-		#Paty's addition for debugging:
-    	#embed()
-    
-        # report/save results
-        if model.options.verbose:
-            post_solve_start_time = time.time()
-            print "Executing post solve functions..."
-        instance.post_solve()
-        if model.options.verbose:
-            post_solve_end_time = time.time()
-            print "Post solve processing completed in {:.2f} s.".format(
-                post_solve_end_time - post_solve_start_time)
-
-    # return stdout to original
-    sys.stdout = stdout_copy
-
-    if model.options.interact or model.options.reload_prior_solution:
->>>>>>> 6f1664a... Some additions: wecc, imported IPython to use embed() for debugging, transmission lines parameter typo, and started a document for debugging.
         m = instance  # present the solved model as 'm' for convenience
         banner = (
             "\n"
@@ -331,6 +214,13 @@ def reload_prior_solution_from_pickle(instance, outdir):
          results = pickle.load(fh)
     instance.solutions.load_from(results)
     return instance
+
+
+def reload_prior_solution_from_pickle(instance, outdir):
+    with open(os.path.join(outdir, 'results.pickle'), 'rb') as fh:
+         results = pickle.load(fh)
+    instance.solutions.load_from(results)
+    return instance 
 
 
 patched_pyomo = False
@@ -573,7 +463,11 @@ def define_arguments(argparser):
     # note: pyomo has a --solver-suffix option but it is not clear
     # whether that does the same thing as --suffix defined here,
     # so we don't reuse the same name.
+<<<<<<< HEAD
     argparser.add_argument("--suffixes", "--suffix", nargs="+", action='extend', default=[],
+=======
+    argparser.add_argument("--suffixes", "--suffix", nargs="+", default=['rc','dual','slack'],
+>>>>>>> a6d4c39... Save the complete results & solution after optimization, and use it to enable more complete loading of an instance when reload_prior_solution is requested. Also provide reasonable default behavior in utilities.create_model() when module_list isn't provided (to aid python command line debugging/ad-hoc scripting). And fix old tests that were breaking.
         help="Extra suffixes to add to the model and exchange with the solver (e.g., iis, rc, dual, or slack)")
 
     # Define solver-related arguments
@@ -856,7 +750,17 @@ def solve(model):
     results = model.solver_manager.solve(model, opt=model.solver, **solver_args)
     #import pdb; pdb.set_trace()
 
+    # Load the solution data into the results object (it only has execution
+    # metadata by default in recent versions of Pyomo). This will enable us to
+    # save and restore model solutions; the results object can be pickled to a
+    # file on disk, but the instance cannot. 
+    # https://stackoverflow.com/questions/39941520/pyomo-ipopt-does-not-return-solution
+    # 
+    model.solutions.store_to(results)
+    model.last_results = results
+
     if model.options.verbose:
+<<<<<<< HEAD
         print("Solved model. Total time spent in solver: {:2f} s.".format(timer.step_time()))
 
 <<<<<<< HEAD
@@ -866,6 +770,11 @@ def solve(model):
     if (results.solver.termination_condition == TerminationCondition.infeasible):
 =======
     model.solutions.load_from(results)
+=======
+        solve_end_time = time.time()
+        print "Solved model. Total time spent in solver: {:2f} s.".format(solve_end_time - solve_start_time)
+
+>>>>>>> a6d4c39... Save the complete results & solution after optimization, and use it to enable more complete loading of an instance when reload_prior_solution is requested. Also provide reasonable default behavior in utilities.create_model() when module_list isn't provided (to aid python command line debugging/ad-hoc scripting). And fix old tests that were breaking.
 # Paty's addition for debugging:
  #   embed()
 

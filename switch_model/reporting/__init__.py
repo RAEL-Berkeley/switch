@@ -26,6 +26,7 @@ dependencies = 'switch_model.financials'
 import os
 import csv
 import itertools
+<<<<<<< HEAD
 try:
     # Python 2
     import cPickle as pickle
@@ -33,6 +34,10 @@ except ImportError:
     import pickle
 from pyomo.environ import value, Var, Expression
 from switch_model.utilities import make_iterable
+=======
+import cPickle as pickle
+from pyomo.environ import value, Var
+>>>>>>> a6d4c39... Save the complete results & solution after optimization, and use it to enable more complete loading of an instance when reload_prior_solution is requested. Also provide reasonable default behavior in utilities.create_model() when module_list isn't provided (to aid python command line debugging/ad-hoc scripting). And fix old tests that were breaking.
 
 csv.register_dialect(
     "switch-csv",
@@ -196,10 +201,20 @@ def save_total_cost_value(instance, outdir):
         fh.write('{}\n'.format(value(instance.SystemCost)))
 
 
+<<<<<<< HEAD
 def save_cost_components(m, outdir):
+=======
+def _save_results(instance, outdir):
+    with open(os.path.join(outdir, 'results.pickle'), 'wb') as fh:
+        pickle.dump(instance.last_results, fh, protocol=-1)
+
+
+def post_solve(instance, outdir):
+>>>>>>> a6d4c39... Save the complete results & solution after optimization, and use it to enable more complete loading of an instance when reload_prior_solution is requested. Also provide reasonable default behavior in utilities.create_model() when module_list isn't provided (to aid python command line debugging/ad-hoc scripting). And fix old tests that were breaking.
     """
     Save values for all individual components of total system cost on NPV basis.
     """
+<<<<<<< HEAD
     cost_dict = dict()
     for annual_cost in m.Cost_Components_Per_Period:
         cost = getattr(m, annual_cost)
@@ -224,3 +239,8 @@ def save_cost_components(m, outdir):
         values=lambda m, c: (c, cost_dict[c]),
         digits=16
     )
+=======
+    _save_generic_results(instance, outdir, instance.options.sorted_output)
+    _save_total_cost_value(instance, outdir)
+    _save_results(instance, outdir)
+>>>>>>> a6d4c39... Save the complete results & solution after optimization, and use it to enable more complete loading of an instance when reload_prior_solution is requested. Also provide reasonable default behavior in utilities.create_model() when module_list isn't provided (to aid python command line debugging/ad-hoc scripting). And fix old tests that were breaking.
