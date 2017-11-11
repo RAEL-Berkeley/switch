@@ -68,6 +68,7 @@ setup(
     ],
     extras_require={
         # packages used for advanced demand response, progressive hedging
+<<<<<<< HEAD
         # note: rpy2 discontinued support for Python 2 as of rpy2 2.9.0
         'advanced': [
             'numpy', 'scipy',
@@ -78,6 +79,11 @@ setup(
         'dev': ['ipdb'],
         'plotting': ['ggplot'],
         'database_access': ['psycopg2-binary']
+=======
+        'advanced': ['numpy', 'scipy', 'rpy2', 'sympy'],
+        'plotting': ['ggplot'],
+        'database_access': ['psycopg2']
+>>>>>>> 50d052e... Export summaries of dispatch as tables and a figure using pandas and ggplot. Renamed the "wide" dispatch output file to dispatch-wide.txt, not to be confused with the normalized data in dispatch.csv. Also renamed/reformatted other dispatch files from 'txt' to 'csv' to have appropriate associations on most computers.
     },
     entry_points={
         'console_scripts': ['switch = switch_model.main:main']
