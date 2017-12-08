@@ -377,6 +377,9 @@ def post_solve(instance, outdir):
     tx_build_df.set_index(["TRANSMISSION_LINE", "PERIOD"], inplace=True)
     tx_build_df.to_csv(os.path.join(outdir, "transmission.csv"))
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     
 >>>>>>> 0664c12... Bugfix for dispatch export columns of annual energy and variable costs. Improve export of transmission builds. Avoid error in solve.py when IPython isn't installed.
+=======
+>>>>>>> c53df07... Export energy costs per period
