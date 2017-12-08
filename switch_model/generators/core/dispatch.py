@@ -334,6 +334,7 @@ def load_inputs(mod, switch_data, inputs_dir):
 def post_solve(instance, outdir):
     """
     Exported files:
+<<<<<<< HEAD
 
     dispatch-wide.csv - Dispatch results timepoints in "wide" format with
     timepoints as rows, generation projects as columns, and dispatch level
@@ -348,6 +349,22 @@ def post_solve(instance, outdir):
     dispatch_zonal_annual_summary.csv - Similar to dispatch_annual_summary.csv
     but broken out by load zone.
 
+=======
+    
+    dispatch-wide.txt - Dispatch results timepoints in "wide" format with
+    timepoints as rows, generation projects as columns, and dispatch level
+    as values
+    
+    dispatch.csv - Dispatch results in normalized form where each row 
+    describes the dispatch of a generation project in one timepoint.
+    
+    dispatch_annual_summary.csv - Similar to dispatch.csv, but summarized
+    by generation technology and period.
+    
+    dispatch_zonal_annual_summary.csv - Similar to dispatch_annual_summary.csv
+    but broken out by load zone. 
+    
+>>>>>>> 0664c12... Bugfix for dispatch export columns of annual energy and variable costs. Improve export of transmission builds. Avoid error in solve.py when IPython isn't installed.
     dispatch_annual_summary.pdf - A figure of annual summary data. Only written
     if the ggplot python library is installed.
     """
@@ -428,6 +445,7 @@ def post_solve(instance, outdir):
 =======
 
 
+<<<<<<< HEAD
     dispatch_normalized_dat = [
         (
 >>>>>>> 50d052e... Export summaries of dispatch as tables and a figure using pandas and ggplot. Renamed the "wide" dispatch output file to dispatch-wide.txt, not to be confused with the normalized data in dispatch.csv. Also renamed/reformatted other dispatch files from 'txt' to 'csv' to have appropriate associations on most computers.
@@ -478,6 +496,30 @@ def post_solve(instance, outdir):
     )
 >>>>>>> f4ec167... Dispatch and emissions results by generator, tech, energy source, load zone, timepoint,  weight of the tp, and period. New outputs: dispatch.txt and emissions_by_tp.txt.
 =======
+=======
+    dispatch_normalized_dat = [{
+        "generation_project": g,
+        "gen_dbid": instance.gen_dbid[g],
+        "gen_tech": instance.gen_tech[g],
+        "gen_load_zone": instance.gen_load_zone[g],
+        "gen_energy_source": instance.gen_energy_source[g],
+        "timestamp": instance.tp_timestamp[t], 
+        "tp_weight_in_year_hrs": instance.tp_weight_in_year[t],
+        "period": instance.tp_period[t],
+        "DispatchGen_MW": value(instance.DispatchGen[g, t]),
+        "Energy_GWh_typical_yr": value(
+            instance.DispatchGen[g, t] * instance.tp_weight_in_year[t] / 1000),
+        "VariableCost_per_yr": value(
+            instance.DispatchGen[g, t] * instance.gen_variable_om[g] * 
+            instance.tp_weight_in_year[t]),
+        "DispatchEmissions_tCO2_per_typical_yr": value(sum(
+            instance.DispatchEmissions[g, t, f] * instance.tp_weight_in_year[t]
+              for f in instance.FUELS_FOR_GEN[g]
+        )) if instance.gen_uses_fuel[g] else None
+    } for g, t in instance.GEN_TPS ]
+    dispatch_full_df = pd.DataFrame(dispatch_normalized_dat)
+    dispatch_full_df.set_index(["generation_project", "timestamp"], inplace=True)
+>>>>>>> 0664c12... Bugfix for dispatch export columns of annual energy and variable costs. Improve export of transmission builds. Avoid error in solve.py when IPython isn't installed.
     dispatch_full_df.to_csv(os.path.join(outdir, "dispatch.csv"))
         
 

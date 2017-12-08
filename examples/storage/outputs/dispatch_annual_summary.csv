@@ -1,4 +1,10 @@
 gen_tech,gen_energy_source,period,Energy_GWh_typical_yr,VariableCost_per_yr,DispatchEmissions_tCO2_per_typical_yr
+<<<<<<< HEAD
 Battery_Storage,Electricity,2020,12.965289685714268,129.65289685714268,0
 Central_PV,Solar,2020,2.6201574,0.0,0
 Geothermal,Geothermal,2020,38.95710582857147,1123133.3610377153,0
+=======
+Battery_Storage,Electricity,2020,12.9652896857,129.652896857,
+Central_PV,Solar,2020,2.6201574,0.0,
+Geothermal,Geothermal,2020,38.9571058286,1123133.36104,
+>>>>>>> 0664c12... Bugfix for dispatch export columns of annual energy and variable costs. Improve export of transmission builds. Avoid error in solve.py when IPython isn't installed.

@@ -335,6 +335,7 @@ def load_inputs(mod, switch_data, inputs_dir):
         )
     )
     switch_data.load_aug(
+<<<<<<< HEAD
         filename=os.path.join(inputs_dir, 'trans_params.csv'),
         optional=True, auto_select=True,
         param=(
@@ -342,6 +343,17 @@ def load_inputs(mod, switch_data, inputs_dir):
             mod.trans_fixed_om_fraction, mod.distribution_loss_rate
         )
     )
+=======
+        filename=os.path.join(inputs_dir, 'trans_optional_params.tab'),
+        optional=True,
+        select=('TRANSMISSION_LINE', 'trans_dbid', 'trans_derating_factor',
+                'trans_terrain_multiplier', 'trans_new_build_allowed'),
+        param=(mod.trans_dbid, mod.trans_derating_factor,
+               mod.trans_terrain_multiplier, mod.trans_new_build_allowed))
+    trans_params_path = os.path.join(inputs_dir, 'trans_params.dat')
+    if os.path.isfile(trans_params_path):
+        switch_data.load(filename=trans_params_path)
+>>>>>>> 0664c12... Bugfix for dispatch export columns of annual energy and variable costs. Improve export of transmission builds. Avoid error in solve.py when IPython isn't installed.
 
 
 def post_solve(instance, outdir):
@@ -364,3 +376,7 @@ def post_solve(instance, outdir):
     tx_build_df = pd.DataFrame(normalized_dat)
     tx_build_df.set_index(["TRANSMISSION_LINE", "PERIOD"], inplace=True)
     tx_build_df.to_csv(os.path.join(outdir, "transmission.csv"))
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 0664c12... Bugfix for dispatch export columns of annual energy and variable costs. Improve export of transmission builds. Avoid error in solve.py when IPython isn't installed.
