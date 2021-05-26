@@ -67,7 +67,6 @@ modules = [
     "switch_model.generators.core.build",
     "switch_model.generators.core.dispatch",
     "switch_model.reporting",
-    "switch_model.balancing.planning_reserves"
     # Custom Modules
     "switch_model.generators.core.no_commit",
     "switch_model.generators.extensions.hydro_simple",
@@ -180,7 +179,8 @@ def create_csvs():
         "rps_scenario_id",
         "enable_dr",
         "enable_ev",
-        "ca_policies_scenario_id"
+        "ca_policies_scenario_id",
+        "enable_planning_reserves"
     ]
 
     db_cursor.execute(
@@ -213,6 +213,7 @@ def create_csvs():
     enable_dr = s_details[14]
     enable_ev = s_details[15]
     ca_policies_scenario_id = s_details[16]
+    enable_planning_reserves = s_details[17]
 
     print(f"Scenario: {scenario_id}: {name}.\n")
 
@@ -380,28 +381,6 @@ def create_csvs():
         SELECT 
             name, reserves_area as balancing_area 
         FROM switch.load_zone;""",
-    )
-
-    write_csv_from_query(
-        db_cursor,
-        "planning_reserve_requirement_zones",
-        ["PLANNING_RESERVE_REQUIREMENT", "LOAD_ZONE"],
-        """
-        SELECT
-            planning_reserve_requirement, load_zone
-        FROM switch.planning_reserve_zones
-        """
-    )
-
-    write_csv_from_query(
-        db_cursor,
-        "planning_reserve_requirements",
-        ["PLANNING_RESERVE_REQUIREMENT", "prr_cap_reserve_margin", "prr_enforcement_timescale"],
-        """
-        SELECT
-            planning_reserve_requirement, prr_cap_reserve_margin, prr_enforcement_timescale
-        FROM switch.planning_reserve_requirements
-        """
     )
 
     # Paty: in this version of switch this tables is named zone_coincident_peak_demand.csv
@@ -712,11 +691,13 @@ def create_csvs():
         f"""
         select generation_plant_id as hydro_project, 
             {timeseries_id_select}, 
-            CASE WHEN hydro_min_flow_mw <= 0 THEN 0.01 
-            WHEN hydro_min_flow_mw > capacity_limit_mw*(1-forced_outage_rate) THEN capacity_limit_mw*(1-forced_outage_rate)
-            ELSE hydro_min_flow_mw END, 
-            CASE WHEN hydro_avg_flow_mw <= 0 THEN 0.01 ELSE
-            least(hydro_avg_flow_mw, (capacity_limit_mw) * (1-forced_outage_rate)) END as hydro_avg_flow_mw
+            CASE 
+                WHEN hydro_min_flow_mw <= 0 THEN 0.01 
+                ELSE least(hydro_min_flow_mw, capacity_limit_mw * (1-forced_outage_rate)) END, 
+            CASE 
+                WHEN hydro_avg_flow_mw <= 0 THEN 0.01 
+                ELSE least(hydro_avg_flow_mw, (capacity_limit_mw) * (1-forced_outage_rate)) END 
+            as hydro_avg_flow_mw
         from hydro_historical_monthly_capacity_factors
             join sampled_timeseries on(month = date_part('month', first_timepoint_utc) and year = date_part('year', first_timepoint_utc))
             join generation_plant using (generation_plant_id)
@@ -922,6 +903,7 @@ def create_csvs():
         )
 
     ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id)
+    planning_reserves(db_cursor, enable_planning_reserves)
     create_modules_txt()
 
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
@@ -975,6 +957,34 @@ def ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id):
 
     modules.append('switch_model.policies.CA_policies')
 
+
+def planning_reserves(db_cursor, enable_planning_reserves):
+    if not enable_planning_reserves:
+        return
+
+    write_csv_from_query(
+        db_cursor,
+        "planning_reserve_requirement_zones",
+        ["PLANNING_RESERVE_REQUIREMENT", "LOAD_ZONE"],
+        """
+        SELECT
+            planning_reserve_requirement, load_zone
+        FROM switch.planning_reserve_zones
+        """
+    )
+
+    write_csv_from_query(
+        db_cursor,
+        "planning_reserve_requirements",
+        ["PLANNING_RESERVE_REQUIREMENT", "prr_cap_reserve_margin", "prr_enforcement_timescale"],
+        """
+        SELECT
+            planning_reserve_requirement, prr_cap_reserve_margin, prr_enforcement_timescale
+        FROM switch.planning_reserve_requirements
+        """
+    )
+
+    modules.append("switch_model.balancing.planning_reserves")
 
 def create_modules_txt():
     print("modules.txt...")
