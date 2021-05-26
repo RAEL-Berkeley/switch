@@ -903,7 +903,8 @@ def create_csvs():
         )
 
     ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id)
-    planning_reserves(db_cursor, enable_planning_reserves)
+    if enable_planning_reserves:
+        planning_reserves(db_cursor)
     create_modules_txt()
 
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
@@ -958,10 +959,7 @@ def ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id):
     modules.append('switch_model.policies.CA_policies')
 
 
-def planning_reserves(db_cursor, enable_planning_reserves):
-    if not enable_planning_reserves:
-        return
-
+def planning_reserves(db_cursor):
     write_csv_from_query(
         db_cursor,
         "planning_reserve_requirement_zones",
