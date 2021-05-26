@@ -683,7 +683,7 @@ def create_csvs():
     # units, but rarely or never for virtual hydro units that aggregate all hydro in a zone or
     # zone + watershed. Eventually, we may rethink this derating, but it is a reasonable
     # approximation for a large hydro fleet where plant outages are individual random events.
-    # Negative flows are replaced by 0.01.
+    # Negative flows are replaced by 0.
     write_csv_from_query(
         db_cursor,
         "hydro_timeseries",
@@ -692,11 +692,11 @@ def create_csvs():
         select generation_plant_id as hydro_project, 
             {timeseries_id_select}, 
             CASE 
-                WHEN hydro_min_flow_mw <= 0 THEN 0.01 
+                WHEN hydro_min_flow_mw <= 0 THEN 0 
                 ELSE least(hydro_min_flow_mw, capacity_limit_mw * (1-forced_outage_rate)) END, 
             CASE 
-                WHEN hydro_avg_flow_mw <= 0 THEN 0.01 
-                ELSE least(hydro_avg_flow_mw, (capacity_limit_mw) * (1-forced_outage_rate)) END 
+                WHEN hydro_avg_flow_mw <= 0 THEN 0 
+                ELSE least(hydro_avg_flow_mw, capacity_limit_mw * (1-forced_outage_rate)) END 
             as hydro_avg_flow_mw
         from hydro_historical_monthly_capacity_factors
             join sampled_timeseries on(month = date_part('month', first_timepoint_utc) and year = date_part('year', first_timepoint_utc))
@@ -974,7 +974,8 @@ def planning_reserves(db_cursor, time_sample_id, hydro_simple_scenario_id):
         select 
             generation_plant_id, 
             raw_timepoint_id,
-            case when capacity_factor < 1e-5 then 0 else capacity_factor end
+            -- zero out capacity_factors that are less than 1e-5 in magnitude to simplify the model
+            case when abs(capacity_factor) < 1e-5 then 0 else capacity_factor end
         from switch.sampled_timepoint as t
         left join (
             select generation_plant_id, year, month, hydro_avg_flow_mw / capacity_limit_mw as capacity_factor 
