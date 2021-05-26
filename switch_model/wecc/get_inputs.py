@@ -67,6 +67,7 @@ modules = [
     "switch_model.generators.core.build",
     "switch_model.generators.core.dispatch",
     "switch_model.reporting",
+    "switch_model.balancing.planning_reserves"
     # Custom Modules
     "switch_model.generators.core.no_commit",
     "switch_model.generators.extensions.hydro_simple",
@@ -386,6 +387,28 @@ def create_csvs():
         FROM switch.load_zone;""",
     )
 
+    write_csv_from_query(
+        db_cursor,
+        "planning_reserve_requirement_zones",
+        ["PLANNING_RESERVE_REQUIREMENT", "LOAD_ZONE"],
+        """
+        SELECT
+            planning_reserve_requirement, load_zone
+        FROM switch.planning_reserve_zones
+        """
+    )
+
+    write_csv_from_query(
+        db_cursor,
+        "planning_reserve_requirements",
+        ["PLANNING_RESERVE_REQUIREMENT", "prr_cap_reserve_margin", "prr_enforcement_timescale"],
+        """
+        SELECT
+            planning_reserve_requirement, prr_cap_reserve_margin, prr_enforcement_timescale
+        FROM switch.planning_reserve_requirements
+        """
+    )
+
     # Paty: in this version of switch this tables is named zone_coincident_peak_demand.csv
     # PATY: PENDING csv!
     # # For now, only taking 2014 peak demand and repeating it.
@@ -570,7 +593,9 @@ def create_csvs():
             min_build_capacity as gen_min_build_capacity,
             is_cogen as gen_is_cogen,
             storage_efficiency as gen_storage_efficiency,
-            store_to_release_ratio as gen_store_to_release_ratio
+            store_to_release_ratio as gen_store_to_release_ratio,
+            -- hardcode all projects to be allowed as a reserve. might later make this more granular
+            1 as gen_can_provide_cap_reserves
             from generation_plant as t
             join load_zone as t2 using(load_zone_id)
             join generation_plant_scenario_member using(generation_plant_id)
