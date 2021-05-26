@@ -904,7 +904,7 @@ def create_csvs():
 
     ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id)
     if enable_planning_reserves:
-        planning_reserves(db_cursor)
+        planning_reserves(db_cursor, time_sample_id, hydro_simple_scenario_id)
     create_modules_txt()
 
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
@@ -959,7 +959,38 @@ def ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id):
     modules.append('switch_model.policies.CA_policies')
 
 
-def planning_reserves(db_cursor):
+def planning_reserves(db_cursor, time_sample_id, hydro_simple_scenario_id):
+    # reserve_capacity_value.csv specifies the capacity factors that should be used when calculating
+    # the reserves. By default, the capacity factor defaults to gen_max_capacity_factor for renewable
+    # projects with variable output and 1.0 for other plants. This is all fine except for hydropower
+    # where it doesn't make sense for the reserve capacity factor to be 1.0 since hydropower
+    # is limited by hydro_avg_flow_mw. Therefore, we override the default of 1.0 for hydropower
+    # generation and instead set the capacity factor as the hydro_avg_flow_mw / capacity_limit_mw.
+    write_csv_from_query(
+        db_cursor,
+        "reserve_capacity_value",
+        ["GENERATION_PROJECT","timepoint","gen_capacity_value"],
+        f"""
+        select 
+            generation_plant_id, 
+            raw_timepoint_id,
+            case when capacity_factor < 1e-5 then 0 else capacity_factor end
+        from switch.sampled_timepoint as t
+        left join (
+            select generation_plant_id, year, month, hydro_avg_flow_mw / capacity_limit_mw as capacity_factor 
+            from switch.hydro_historical_monthly_capacity_factors
+            left join switch.generation_plant
+                using(generation_plant_id) 
+            where hydro_simple_scenario_id = {hydro_simple_scenario_id}
+        ) as h
+            on (
+                month = date_part('month', timestamp_utc) and
+                year = date_part('year', timestamp_utc)
+            )
+        where time_sample_id = {time_sample_id};
+        """
+    )
+
     write_csv_from_query(
         db_cursor,
         "planning_reserve_requirement_zones",
