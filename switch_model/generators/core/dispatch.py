@@ -14,11 +14,6 @@ import os, collections
 from pyomo.environ import *
 from switch_model.reporting import write_table
 import pandas as pd
-try:
-    from ggplot import *
-    can_plot = True
-except:
-    can_plot = False
 
 dependencies = 'switch_model.timescales', 'switch_model.balancing.load_zones',\
     'switch_model.financials', 'switch_model.energy_sources.properties', \
@@ -466,7 +461,6 @@ def post_solve(instance, outdir):
                          "DispatchEmissions_tCO2_per_typical_yr", "DispatchEmissions_tNOx_per_typical_yr",
                          "DispatchEmissions_tSO2_per_typical_yr", "DispatchEmissions_tCH4_per_typical_yr"])
 
-
     zonal_annual_summary = dispatch_full_df.groupby(
         ['gen_tech', "gen_load_zone", "gen_energy_source", "period"]
     ).sum()
@@ -479,11 +473,83 @@ def post_solve(instance, outdir):
                  "DispatchEmissions_tSO2_per_typical_yr", "DispatchEmissions_tCH4_per_typical_yr"]
     )
 
-    if can_plot:
-        annual_summary_plot = ggplot(
-                annual_summary.reset_index(),
-                aes(x='period', weight="Energy_GWh_typical_yr", fill="factor(gen_tech)")
-            ) + \
-            geom_bar(position="stack") + \
-            scale_y_continuous(name='Energy (GWh/yr)') + theme_bw()
-        annual_summary_plot.save(filename=os.path.join(outdir, "dispatch_annual_summary.pdf"))
+
+def graph(tools):
+    # --------------------- #
+    # dispatch.png          #
+    # --------------------- #
+    # Read dispatch.csv
+    dispatch = tools.get_dataframe(csv='dispatch')
+    # Add the technology type column and filter out unneeded columns
+    dispatch = tools.add_gen_type_column(dispatch)[["gen_type", "timestamp", "DispatchGen_MW"]]
+    # Sum the DispatchGen_MW for all technology types and timepoints
+    dispatch = dispatch.groupby(["gen_type", "timestamp"], as_index=False).sum()
+    # Create a datetime column with the datetime format
+    # dispatch["datetime"] = tools.pd.to_datetime(dispatch["timestamp"], format="%Y%m%d%H")
+    dispatch.index = tools.pd.to_datetime(dispatch["timestamp"], format="%Y%m%d%H")
+    # Keep only the last year
+    last_year = max(dispatch.index.year)
+    dispatch = dispatch.loc[dispatch.index.year == last_year]
+    # Convert to time zone
+    dispatch = dispatch.tz_localize("utc").tz_convert("US/Pacific")
+    # Add an hour and quarter column
+    dispatch["hour"] = dispatch.index.hour
+    dispatch["quarter"] = dispatch.index.quarter
+    # Sum across all technologies that are in the same hour and quarter
+    dispatch = dispatch.groupby(["hour", "gen_type", "quarter"], as_index=False).sum()[["quarter", "hour", "gen_type", "DispatchGen_MW"]]
+    # Scale to GW
+    dispatch['DispatchGen_MW'] *= 1E-3
+    # for each quarter...
+    for quarter in range(1, 5):
+        # get the dispatch for that quarter
+        quarter_dispatch = dispatch[dispatch['quarter'] == quarter]
+        # Make it into a proper dataframe
+        quarter_dispatch = quarter_dispatch.pivot(index='hour', columns='gen_type', values='DispatchGen_MW')
+        # Sort the technologies by standard deviation to have the smoothest ones at the bottom of the stacked area plot
+        quarter_dispatch.loc["std"] = quarter_dispatch.std()
+        quarter_dispatch = quarter_dispatch.sort_values(by='std', axis=1)
+        quarter_dispatch = quarter_dispatch[:-1]
+        # Get axes
+        ax = tools.get_new_axes(
+            out=f"dispatch-q{quarter}",
+            title=f"Average dispatch during Quarter {quarter} of {last_year}",
+            note="This is only for diagnostics."
+                 "\nAll timepoints in a quarter are summed equally regardless of their actual weighting leading to potentially misleading results."
+        )
+        # Rename to make legend proper
+        quarter_dispatch = quarter_dispatch.rename_axis("Type", axis='columns')
+        # Plot
+        quarter_dispatch.plot.area(ax=ax, color=tools.get_colors(), xlabel="Hour of day (PST)",
+                                   ylabel="Sum of all dispatch (GW)")
+
+    # ---------------------------------- #
+    # total_dispatch.png                 #
+    # ---------------------------------- #
+    # read dispatch_annual_summary.csv
+    total_dispatch = tools.get_dataframe(csv="dispatch_annual_summary")
+    # add type column
+    total_dispatch = tools.add_gen_type_column(total_dispatch)
+    # aggregate and pivot
+    total_dispatch = total_dispatch.pivot_table(columns="gen_type", index="period", values="Energy_GWh_typical_yr",
+                                                aggfunc=tools.np.sum)
+    # Convert values to TWh
+    total_dispatch *= 1E-3
+
+    # For generation types that make less than 2% in every period, group them under "Other"
+    # ---------
+    # sum the generation across the energy_sources for each period, 2% of that is the cutoff for that period
+    cutoff_per_period = total_dispatch.sum(axis=1) * 0.02
+    # Check for each technology if it's below the cutoff for every period
+    is_below_cutoff = total_dispatch.lt(cutoff_per_period, axis=0).all()
+    # groupby if the technology is below the cutoff
+    total_dispatch = total_dispatch.groupby(axis=1, by=lambda c: "Other" if is_below_cutoff[c] else c).sum()
+
+    # Sort columns by the last period
+    total_dispatch = total_dispatch.sort_values(by=total_dispatch.index[-1], axis=1)
+    # Give proper name for legend
+    total_dispatch = total_dispatch.rename_axis("Type", axis=1)
+    # Get axis
+    ax = tools.get_new_axes(out="total_dispatch", title="Total dispatched electricity")
+    # Plot
+    total_dispatch.plot(kind='bar', stacked=True, ax=ax, color=tools.get_colors(len(total_dispatch)),
+                        xlabel="Period", ylabel="Total dispatched electricity (TWh)")
