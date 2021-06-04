@@ -362,8 +362,6 @@ def define_components(mod):
             period for period in m.PERIODS
             if gen_build_can_operate_in_period(m, g, bld_yr, period)])
 
-    # Only used to make calculating BLD_YRS_FOR_GEN_PERIOD more efficient
-    # Instead of finding the build years for each period, we only do it once.
     mod.BLD_YRS_FOR_GEN = Set(
         mod.GENERATION_PROJECTS,
         ordered=False,

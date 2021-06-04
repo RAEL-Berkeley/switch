@@ -235,38 +235,36 @@ def define_components(mod):
         mod.FUEL_BASED_GEN_TPS,
         rule=lambda m, g, t: sum(m.DispatchGenByFuel[g, t, f] for f in m.FUELS_FOR_GEN[g]) == m.DispatchGen[g, t])
 
-    # Only used to improve the performance of calculating ZoneTotalCentralDispatch
+    # Only used to improve the performance of calculating ZoneTotalCentralDispatch and ZoneTotalDistributedDispatch
     mod.GENS_FOR_ZONE_TPS = Set(
         mod.LOAD_ZONES, mod.TIMEPOINTS,
         ordered=False,
         initialize=lambda m, z, t: set(g for g in m.GENS_IN_ZONE[z] if (g, t) in m.GEN_TPS)
     )
 
+    # If we use the local_td module, divide distributed generation into a separate expression so that we can
+    # put it in the distributed node's power balance equations
+    using_local_td = hasattr(mod, "Distributed_Power_Injections")
+
     mod.ZoneTotalCentralDispatch = Expression(
         mod.LOAD_ZONES, mod.TIMEPOINTS,
         rule=lambda m, z, t: \
         sum(m.DispatchGen[g, t]
-            for g in m.GENS_FOR_ZONE_TPS[z, t] if not m.gen_is_distributed[g]) -
+            for g in m.GENS_FOR_ZONE_TPS[z, t] if not using_local_td or not m.gen_is_distributed[g]) -
         sum(m.DispatchGen[g, t] * m.gen_ccs_energy_load[g]
-            for g in m.GENS_FOR_ZONE_TPS[z, t] if g in m.CCS_EQUIPPED_GENS),
+            for g in m.CCS_EQUIPPED_GENS if g in m.GENS_FOR_ZONE_TPS[z, t]),
         doc="Net power from grid-tied generation projects.")
     mod.Zone_Power_Injections.append('ZoneTotalCentralDispatch')
 
-    # Divide distributed generation into a separate expression so that we can
-    # put it in the distributed node's power balance equations if local_td is
-    # included.
-    mod.ZoneTotalDistributedDispatch = Expression(
-        mod.LOAD_ZONES, mod.TIMEPOINTS,
-        rule=lambda m, z, t: \
-            sum(m.DispatchGen[g, t]
-                for g in m.GENS_IN_ZONE[z]
-                if (g, t) in m.GEN_TPS and m.gen_is_distributed[g]),
-        doc="Total power from distributed generation projects."
-    )
-    try:
+    if using_local_td:
+        mod.ZoneTotalDistributedDispatch = Expression(
+            mod.LOAD_ZONES, mod.TIMEPOINTS,
+            rule=lambda m, z, t: \
+                sum(m.DispatchGen[g, t]
+                    for g in m.GENS_IN_ZONE_TPS[z, t] if m.gen_is_distributed[g]),
+            doc="Total power from distributed generation projects."
+        )
         mod.Distributed_Power_Injections.append('ZoneTotalDistributedDispatch')
-    except AttributeError:
-        mod.Zone_Power_Injections.append('ZoneTotalDistributedDispatch')
 
     def init_gen_availability(m, g):
         if m.gen_is_baseload[g]:
