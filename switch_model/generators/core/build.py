@@ -361,14 +361,23 @@ def define_components(mod):
         initialize=lambda m, g, bld_yr: set(
             period for period in m.PERIODS
             if gen_build_can_operate_in_period(m, g, bld_yr, period)))
+
+    # Only used to make calculating BLD_YRS_FOR_GEN_PERIOD more efficient
+    # Instead of finding the build years for each period, we only do it once.
+    mod.BLD_YRS_FOR_GEN = Set(
+        mod.GENERATION_PROJECTS,
+        initialize=lambda m, g: set(
+            bld_yr for (gen, bld_yr) in m.GEN_BLD_YRS if gen == g
+        )
+    )
+
     # The set of build years that could be online in the given period
     # for the given project.
     mod.BLD_YRS_FOR_GEN_PERIOD = Set(
         mod.GENERATION_PROJECTS, mod.PERIODS,
         initialize=lambda m, g, period: set(
-            bld_yr for (gen, bld_yr) in m.GEN_BLD_YRS
-            if gen == g and
-               gen_build_can_operate_in_period(m, g, bld_yr, period)))
+            bld_yr for bld_yr in m.BLD_YRS_FOR_GEN[g]
+            if gen_build_can_operate_in_period(m, g, bld_yr, period)))
     # The set of periods when a generator is available to run
     mod.PERIODS_FOR_GEN = Set(
         mod.GENERATION_PROJECTS,

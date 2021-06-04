@@ -107,6 +107,7 @@ def define_components(mod):
     mod.Enforce_Dispatch_Upper_Limit = Constraint(
         mod.GEN_TPS,
         rule=lambda m, g, t:
+        # TODO Improve performance
         m.DispatchGen[g, t] * enforce_dispatch_upper_limit_scaling_factor
         <= enforce_dispatch_upper_limit_scaling_factor * m.DispatchUpperLimit[g, t]
     )

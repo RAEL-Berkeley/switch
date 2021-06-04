@@ -233,15 +233,20 @@ def define_components(mod):
     mod.DispatchGenByFuel_Constraint = Constraint(
         mod.FUEL_BASED_GEN_TPS,
         rule=lambda m, g, t: sum(m.DispatchGenByFuel[g, t, f] for f in m.FUELS_FOR_GEN[g]) == m.DispatchGen[g, t])
+
+    # Only used to improve the performance of calculating ZoneTotalCentralDispatch
+    mod.GENS_FOR_ZONE_TPS = Set(
+        mod.LOAD_ZONES, mod.TIMEPOINTS,
+        initialize=lambda m, z, t: set(g for g in m.GENS_IN_ZONE[z] if (g, t) in m.GEN_TPS)
+    )
+
     mod.ZoneTotalCentralDispatch = Expression(
         mod.LOAD_ZONES, mod.TIMEPOINTS,
         rule=lambda m, z, t: \
-            sum(m.DispatchGen[p, t]
-                for p in m.GENS_IN_ZONE[z]
-                if (p, t) in m.GEN_TPS and not m.gen_is_distributed[p]) -
-            sum(m.DispatchGen[p, t] * m.gen_ccs_energy_load[p]
-                for p in m.GENS_IN_ZONE[z]
-                if (p, t) in m.GEN_TPS and p in m.CCS_EQUIPPED_GENS),
+        sum(m.DispatchGen[g, t]
+            for g in m.GENS_FOR_ZONE_TPS[z, t] if not m.gen_is_distributed[g]) -
+        sum(m.DispatchGen[g, t] * m.gen_ccs_energy_load[g]
+            for g in m.GENS_FOR_ZONE_TPS[z, t] if g in m.CCS_EQUIPPED_GENS),
         doc="Net power from grid-tied generation projects.")
     mod.Zone_Power_Injections.append('ZoneTotalCentralDispatch')
 

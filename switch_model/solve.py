@@ -113,7 +113,6 @@ def main(args=None, return_model=False, return_instance=False):
                 print("Iteration modules:", iterate_modules)
             print("=======================================================================\n")
             print(f"Model created in {timer.step_time_as_str()}.")
-            print("Loading inputs...")
 
         # create an instance (also reports time spent reading data and loading into model)
         instance = model.load_inputs()
