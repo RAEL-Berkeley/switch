@@ -68,8 +68,8 @@ setup(
         "optimization",
     ],
     install_requires=[
-        "Pyomo==5.6.5",  # We need a version that works with glpk 4.60+
-        "pyutilib==5.8.0",
+        "Pyomo",  # We need a version that works with glpk 4.60+
+        "pyutilib",
         "pint",  # needed by Pyomo when we run our tests, but not included
         "testfixtures",  # used for standard tests
         "pandas",  # used for input upgrades and testing that functionality

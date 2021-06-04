@@ -171,7 +171,7 @@ def define_components(mod):
         if len(m.period_active_gen_dict) == 0:
             delattr(m, 'period_active_gen_dict')
         return result
-    mod.GENS_IN_PERIOD = Set(mod.PERIODS, initialize=period_active_gen_rule,
+    mod.GENS_IN_PERIOD = Set(mod.PERIODS, ordered=False, initialize=period_active_gen_rule,
         doc="The set of projects active in a given period.")
 
     mod.TPS_FOR_GEN = Set(
@@ -196,6 +196,7 @@ def define_components(mod):
         return result
     mod.TPS_FOR_GEN_IN_PERIOD = Set(
         mod.GENERATION_PROJECTS, mod.PERIODS,
+        ordered=False,
         within=mod.TIMEPOINTS, initialize=init)
 
     mod.GEN_TPS = Set(
@@ -237,6 +238,7 @@ def define_components(mod):
     # Only used to improve the performance of calculating ZoneTotalCentralDispatch
     mod.GENS_FOR_ZONE_TPS = Set(
         mod.LOAD_ZONES, mod.TIMEPOINTS,
+        ordered=False,
         initialize=lambda m, z, t: set(g for g in m.GENS_IN_ZONE[z] if (g, t) in m.GEN_TPS)
     )
 

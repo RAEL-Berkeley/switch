@@ -173,7 +173,7 @@ def define_components(mod):
 
     """
 
-    mod.TRANSMISSION_LINES = Set()
+    mod.TRANSMISSION_LINES = Set(dimen=1)
     mod.trans_lz1 = Param(mod.TRANSMISSION_LINES, within=mod.LOAD_ZONES)
     mod.trans_lz2 = Param(mod.TRANSMISSION_LINES, within=mod.LOAD_ZONES)
     # we don't do a min_data_check for TRANSMISSION_LINES, because it may be empty for model

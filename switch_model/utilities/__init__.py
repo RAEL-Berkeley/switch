@@ -10,6 +10,7 @@ import os, types, importlib, re, sys, argparse, time, datetime, traceback, subpr
 
 import switch_model.__main__ as main
 from pyomo.environ import *
+from pyomo.core.base.set import UnknownSetDimen
 from switch_model.utilities.scaling import _ScaledVariable, _get_unscaled_expression
 import pyomo.opt
 import yaml
@@ -399,7 +400,7 @@ def _add_min_data_check(model):
 
 
 def has_discrete_variables(model):
-    all_elements = lambda v: v.itervalues() if v.is_indexed() else [v]
+    all_elements = lambda v: v.values() if v.is_indexed() else [v]
     return any(
         v.is_binary() or v.is_integer()
         for variable in model.component_objects(Var, active=True)
@@ -463,7 +464,7 @@ def check_mandatory_components(model, *mandatory_model_components):
     for component_name in mandatory_model_components:
         obj = getattr(model, component_name)
         o_class = type(obj).__name__
-        if o_class == 'SimpleSet' or o_class == 'OrderedSimpleSet':
+        if o_class == 'ScalarSet' or o_class == 'OrderedScalarSet':
             if len(obj) == 0:
                 raise ValueError(
                     "No data is defined for the mandatory set '{}'.".
@@ -482,7 +483,7 @@ def check_mandatory_components(model, *mandatory_model_components):
                 raise ValueError(
                     ("Sets are not defined for every index of " +
                      "the mandatory indexed set '{}'").format(component_name))
-        elif o_class == 'SimpleParam':
+        elif o_class == 'ScalarParam':
             if obj.value is None:
                 raise ValueError(
                     "Value not provided for mandatory parameter '{}'".
@@ -584,10 +585,15 @@ def load_aug(switch_data, optional=False, auto_select=False,
     # Grab the dimensionality of the index param if it was provided.
     if 'index' in kwds:
         num_indexes = kwds['index'].dimen
+        if num_indexes == UnknownSetDimen:
+            raise Exception(f"Index {kwds['index'].name} has unknown dimension. Specify dimen= during its creation.")
     # Next try the first parameter's index.
     elif len(params) > 0:
         try:
-            num_indexes = params[0].index_set().dimen
+            indexed_set = params[0].index_set()
+            num_indexes = indexed_set.dimen
+            if num_indexes == UnknownSetDimen:
+                raise Exception(f"{indexed_set.name} has unknown dimension. Specify dimen= during its creation.")
         except (ValueError, AttributeError):
             num_indexes = 0
     # Default to 0 if both methods failed.
