@@ -261,6 +261,7 @@ def define_components(mod):
         initialize=init_DIRECTIONAL_TX)
     mod.TX_CONNECTIONS_TO_ZONE = Set(
         mod.LOAD_ZONES,
+        ordered=False,
         initialize=lambda m, lz: set(
             z for z in m.LOAD_ZONES if (z,lz) in m.DIRECTIONAL_TX))
 
