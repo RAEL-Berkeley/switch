@@ -7,7 +7,7 @@ from pyomo.environ import *
 from pyomo.opt import SolverFactory, SolverStatus, TerminationCondition
 import pyomo.version
 
-import sys, os, shlex, re, inspect, textwrap, types, pickle
+import sys, os, shlex, re, inspect, textwrap, types, pickle, traceback
 
 import switch_model
 from switch_model.utilities import (
@@ -826,7 +826,14 @@ def solve(model):
     # file on disk, but the instance cannot.
     # https://stackoverflow.com/questions/39941520/pyomo-ipopt-does-not-return-solution
     #
-    model.solutions.store_to(results)
+    try:
+        model.solutions.store_to(results)
+    except:
+        # Print the error that would normally be thrown with the
+        # full stack trace and an explanatory message
+        print(f"ERROR: Failed to save solution after solving. Exception was caught and we're moving on to post_solve()"
+              f"\n{traceback.format_exc()}")
+
 
     # Cache a copy of the results object, to allow saving and restoring model
     # solutions later.
