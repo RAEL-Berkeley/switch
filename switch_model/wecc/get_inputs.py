@@ -11,6 +11,7 @@ That code was removed however it can still be found at this commit
 # Standard packages
 import argparse
 import os
+import shutil
 from typing import Iterable, List
 
 # Switch packages
@@ -907,6 +908,12 @@ def create_csvs():
     if enable_planning_reserves:
         planning_reserves(db_cursor, time_sample_id, hydro_simple_scenario_id)
     create_modules_txt()
+
+    graph_config = os.path.join(os.path.dirname(__file__), "graph_config")
+    print("tech_colors.csv...")
+    shutil.copy(os.path.join(graph_config, "tech_colors.csv"), "tech_colors.csv")
+    print("tech_types.csv...")
+    shutil.copy(os.path.join(graph_config, "tech_types.csv"), "tech_types.csv")
 
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
 
