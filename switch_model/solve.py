@@ -18,6 +18,7 @@ from switch_model.utilities import (
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
 from switch_model.tools.graphing import graph
+import switch_model.utilities.multiscenario # Keep import to ensure that the solver is registered
 
 
 def main(args=None, return_model=False, return_instance=False, attach_data_portal=False):

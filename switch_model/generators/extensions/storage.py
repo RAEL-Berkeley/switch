@@ -165,7 +165,8 @@ def define_components(mod):
         initialize=lambda m: [(g, bld_yr) for g in m.STORAGE_GENS for bld_yr in m.BLD_YRS_FOR_GEN[g]])
     mod.gen_storage_energy_overnight_cost = Param(
         mod.STORAGE_GEN_BLD_YRS,
-        within=NonNegativeReals)
+        within=NonNegativeReals,
+        mutable=True)
     mod.min_data_check('gen_storage_energy_overnight_cost')
     mod.gen_predetermined_storage_energy_mwh = Param(
         mod.PREDETERMINED_GEN_BLD_YRS,
