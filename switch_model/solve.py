@@ -10,17 +10,22 @@ import pandas as pd
 
 import sys, os, shlex, re, inspect, textwrap, types, pickle, traceback, gc
 import warnings
+import datetime
+import platform
+
+from pyomo.solvers.plugins.solvers.direct_or_persistent_solver import DirectOrPersistentSolver
 
 from pyomo.solvers.plugins.solvers.direct_or_persistent_solver import DirectOrPersistentSolver
 
 import switch_model
 from switch_model.tools.graphing.main import graph_scenarios, Scenario
 from switch_model.utilities import (
-    create_model, _ArgumentParser, StepTimer, make_iterable, LogOutput, warn, query_yes_no, create_info_file,
-    get_module_list, add_module_args, _ScaledVariable
+    create_model, _ArgumentParser, StepTimer, make_iterable, LogOutput, warn, query_yes_no,
+    get_module_list, add_module_args, _ScaledVariable, add_git_info
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
 from switch_model.tools.graphing import graph
+from switch_model.utilities.results_info import save_info, add_info, ResultsInfoSection
 from switch_model.utilities.multiscenario import load_multi_scenario, MultiScenario
 
 
@@ -105,6 +110,9 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             if not os.path.isdir(model.options.outputs_dir):
                 raise IOError("Directory specified for prior solution does not exist.")
 
+        add_info("Host name", platform.node(), section=ResultsInfoSection.GENERAL)
+        add_git_info()
+
         # get a list of modules to iterate through
         iterate_modules = get_iteration_list(model)
 
@@ -113,7 +121,7 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             print("Switch {}, http://switch-model.org".format(switch_model.__version__))
             print("=======================================================================")
             print("Arguments:")
-            print(", ".join(k+"="+repr(v) for k, v in model.options.__dict__.items() if v))
+            print(", ".join(k + "=" + repr(v) for k, v in model.options.__dict__.items() if v))
             print("Modules:\n"+", ".join(m for m in modules))
             if iterate_modules:
                 print("Iteration modules:", iterate_modules)
@@ -190,6 +198,7 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
         # (repeated if model is reloaded, to automatically run any new export code)
         if not instance.options.no_post_solve:
             if instance.options.verbose:
+                timer.step_time()
                 print("Executing post solve functions...")
             if not hasattr(instance, "scenarios"):
                 instance.post_solve()
@@ -216,7 +225,15 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
                 print(f"Post solve processing completed in {timer.step_time_as_str()}.")
 
         total_time = start_to_end_timer.step_time_as_str()
-        create_info_file(getattr(instance.options, "outputs_dir", "outputs"), run_time=total_time)
+        add_info("Total run time", total_time, section=ResultsInfoSection.GENERAL)
+
+        add_info("End date", datetime.datetime.now().strftime('%Y-%m-%d'), section=ResultsInfoSection.GENERAL)
+        add_info("End time", datetime.datetime.now().strftime('%H:%M:%S'), section=ResultsInfoSection.GENERAL)
+
+        save_info(
+            os.path.join(getattr(instance.options, "outputs_dir", "outputs"),
+                         "info.txt")
+        )
 
         if instance.options.verbose:
             print(f"Total time spent running SWITCH: {total_time}.")
