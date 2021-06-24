@@ -39,10 +39,10 @@ class Scenario:
 
     Here, some operation will be run as if the working directory were the directory of the scenario
     """
-    root_path = os.getcwd()
 
-    def __init__(self, rel_path, name):
-        self.path = os.path.normpath(os.path.join(Scenario.root_path, rel_path))
+    def __init__(self, rel_path, name=None):
+        self.root_path = os.getcwd()
+        self.path = os.path.normpath(os.path.join(self.root_path, rel_path))
         self.name = name
 
         if not os.path.isdir(self.path):
@@ -52,7 +52,7 @@ class Scenario:
         os.chdir(self.path)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        os.chdir(Scenario.root_path)
+        os.chdir(self.root_path)
 
 
 class GraphTools:
@@ -61,7 +61,7 @@ class GraphTools:
     Provides utilities to make graphing easier and standardized.
     """
 
-    def __init__(self, scenarios: List[Scenario], graph_dir: str):
+    def __init__(self, scenarios: List[Scenario], graph_dir: str, inputs_dir="inputs", outputs_dir="outputs"):
         """
         Create the GraphTools.
 
@@ -398,7 +398,8 @@ class GraphTools:
         legend_pairs = legend.items()
         fig.legend([h for _, h in legend_pairs], [l for l, _ in legend_pairs])
 
-def graph_scenarios(scenarios: List[Scenario], graph_dir):
+
+def graph_scenarios(scenarios: List[Scenario], **kwargs):
     # Start a timer
     timer = StepTimer()
 
@@ -410,7 +411,7 @@ def graph_scenarios(scenarios: List[Scenario], graph_dir):
         return
 
     # Initialize the graphing tool
-    graph_tools = GraphTools(scenarios=scenarios, graph_dir=graph_dir)
+    graph_tools = GraphTools(scenarios=scenarios, **kwargs)
 
     # Loop through every graphing module
     print(f"Graphing modules:")

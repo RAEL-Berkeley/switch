@@ -13,6 +13,8 @@ from pyomo.environ import *
 from pyomo.core.base.set import UnknownSetDimen
 from pyomo.dataportal import DataManagerFactory
 from pyomo.dataportal.plugins.csv_table import CSVTable
+
+from switch_model.utilities.multiscenario import MultiScenario
 from switch_model.utilities.scaling import _ScaledVariable, _get_unscaled_expression
 import pyomo.opt
 
@@ -297,6 +299,14 @@ def load_inputs(model, inputs_dir=None, attach_data_portal=False):
         instance.DataPortal = data
     else:
         del data
+
+    instance.scenarios = [
+        MultiScenario("Base", []),
+        MultiScenario("Increased Cost", [
+            ("gen_storage_energy_overnight_cost", ("Battery_Storage", 2020), 100)
+        ])
+    ]
+
     return instance
 
 

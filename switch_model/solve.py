@@ -11,14 +11,17 @@ import pandas as pd
 import sys, os, shlex, re, inspect, textwrap, types, pickle, traceback, gc
 import warnings
 
+from pyomo.solvers.plugins.solvers.direct_or_persistent_solver import DirectOrPersistentSolver
+
 import switch_model
+from switch_model.tools.graphing.main import graph_scenarios, Scenario
 from switch_model.utilities import (
     create_model, _ArgumentParser, StepTimer, make_iterable, LogOutput, warn, query_yes_no, create_info_file,
     get_module_list, add_module_args, _ScaledVariable
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
 from switch_model.tools.graphing import graph
-import switch_model.utilities.multiscenario # Keep import to ensure that the solver is registered
+from switch_model.utilities.multiscenario import load_multi_scenario, MultiScenario
 
 
 def main(args=None, return_model=False, return_instance=False, attach_data_portal=False):
@@ -188,12 +191,29 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
         if not instance.options.no_post_solve:
             if instance.options.verbose:
                 print("Executing post solve functions...")
-            instance.post_solve()
+            if not hasattr(instance, "scenarios"):
+                instance.post_solve()
+                if instance.options.graph:
+                    graph.main(args=["--overwrite"])
+            else:
+                base_dir = os.getcwd()
+                for scenario in instance.scenarios:
+                    load_multi_scenario(instance, scenario)
+                    scenario_dir = os.path.join(base_dir, scenario.name)
+                    if not os.path.exists(scenario_dir):
+                        os.makedirs(scenario_dir)
+                    os.chdir(scenario_dir)
+                    instance.post_solve()
+                    os.chdir(base_dir)
+                    if instance.options.graph:
+                        graph_scenarios(
+                            scenarios=[Scenario(rel_path=scenario.name, name=None)],
+                            graph_dir=os.path.join(scenario_dir, "graphs")
+                        )
+
+
             if instance.options.verbose:
                 print(f"Post solve processing completed in {timer.step_time_as_str()}.")
-
-        if instance.options.graph:
-            graph.main(args=["--overwrite"])
 
         total_time = start_to_end_timer.step_time_as_str()
         create_info_file(getattr(instance.options, "outputs_dir", "outputs"), run_time=total_time)
@@ -583,6 +603,10 @@ def define_arguments(argparser):
         "--warm-start", default=None,
         help="Path to folder of directory to use for warm start"
     )
+    argparser.add_argument(
+        "--gurobi-multi-scenario", default=False, action="store_true",
+        help="Use Gurobi's multi-scenario solve feature."
+    )
 
 
 def add_recommended_args(argparser):
@@ -712,6 +736,9 @@ def solve(model):
         solver = model.solver
         solver_manager = model.solver_manager
     else:
+        if model.options.gurobi_multi_scenario:
+            model.options.solver = "gurobi_scenarios"
+
         # Create a solver object the first time in. We don't do this until a solve is
         # requested, because sometimes a different solve function may be used,
         # with its own solver object (e.g., with runph or a parallel solver server).
@@ -719,7 +746,7 @@ def solve(model):
         # unused solver object, or get errors if the solver options are invalid.
         #
         # Note previously solver was saved in model however this is very memory inefficient.
-        solver = SolverFactory(model.options.solver, solver_io=model.options.solver_io)
+        solver = SolverFactory(model.options.solver, scenarios=model.scenarios, solver_io=model.options.solver_io)
 
         # If this option is enabled, gurobi will output an IIS to outputs\iis.ilp.
         if model.options.gurobi_find_iis:
@@ -745,11 +772,13 @@ def solve(model):
         solver_manager = SolverManagerFactory(model.options.solver_manager)
 
     # get solver arguments
+    save_results = model.options.save_solution if isinstance(solver, DirectOrPersistentSolver) else None
     solver_args = dict(
         options_string=model.options.solver_options_string,
         keepfiles=model.options.keepfiles,
         tee=model.options.tee,
         symbolic_solver_labels=model.options.symbolic_solver_labels,
+        save_results=save_results,
     )
 
     if model.options.warm_start is not None:
@@ -826,7 +855,7 @@ def solve(model):
     # result.solution.status, but also cleared) is in
     # pyomo.opt.SolutionStatus.['optimal', 'bestSoFar', 'feasible', 'globallyOptimal', 'locallyOptimal'],
     # but this seems pretty foolproof (if undocumented).
-    if len(model.solutions[-1]._entry['variable']) == 0:
+    if save_results and len(model.solutions[-1]._entry['variable']) == 0:
         # no solution returned
         print("Solver terminated without a solution.")
         print("  Solver Status: ", results.solver.status)
