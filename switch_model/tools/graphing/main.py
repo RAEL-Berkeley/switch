@@ -33,7 +33,7 @@ class Scenario:
     Here, some operation will be run as if the working directory were the directory of the scenario
     """
 
-    def __init__(self, rel_path, name=None):
+    def __init__(self, rel_path=".", name=None):
         self.root_path = os.getcwd()
         self.path = os.path.normpath(os.path.join(self.root_path, rel_path))
         self.name = name
@@ -155,7 +155,7 @@ class GraphTools:
     Provides utilities to make graphing easier and standardized.
     """
 
-    def __init__(self, scenarios: List[Scenario], graph_dir: str, inputs_dir="inputs", outputs_dir="outputs"):
+    def __init__(self, scenarios: List[Scenario], graph_dir="graphs", inputs_dir="inputs", outputs_dir="outputs"):
         """
         Create the GraphTools.
 
@@ -170,6 +170,10 @@ class GraphTools:
 
         self._scenarios: List[Scenario] = scenarios
         self.graph_dir = graph_dir
+        if not os.path.exists(graph_dir):
+            os.mkdir(graph_dir)
+        self.inputs_dir = inputs_dir
+        self.outputs_dir = outputs_dir
 
         # Here we store a mapping of csv file names to their dataframes.
         # Each dataframe has a column called 'scenario' that specifies which scenario
@@ -295,7 +299,7 @@ class GraphTools:
             csv += ".csv"
         # Select folder if not specified
         if folder is None:
-            folder = "inputs" if from_inputs else "outputs"
+            folder = self.inputs_dir if from_inputs else self.outputs_dir
         # Get dataframe path
         path = os.path.join(folder, csv)
 

@@ -203,7 +203,7 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             if not hasattr(instance, "scenarios"):
                 instance.post_solve()
                 if instance.options.graph:
-                    graph.main(args=["--overwrite"])
+                    graph_scenarios([Scenario()])
             else:
                 base_dir = os.getcwd()
                 for scenario in instance.scenarios:
@@ -214,12 +214,13 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
                     os.chdir(scenario_dir)
                     instance.post_solve()
                     os.chdir(base_dir)
+
                     if instance.options.graph:
                         graph_scenarios(
-                            scenarios=[Scenario(rel_path=scenario.name, name=None)],
+                            scenarios=[Scenario()],
+                            outputs_dir=os.path.join(scenario_dir, "outputs"),
                             graph_dir=os.path.join(scenario_dir, "graphs")
                         )
-
 
             if instance.options.verbose:
                 print(f"Post solve processing completed in {timer.step_time_as_str()}.")

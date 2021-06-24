@@ -24,9 +24,6 @@ def main(args=None):
         if not args.overwrite and not query_yes_no(
                 f"Folder '{args.graph_dir}' already exists. Some graphs may be overwritten. Continue?"):
             return
-    # Otherwise create the directory
-    else:
-        os.mkdir(args.graph_dir)
 
     # Create the graphs (with a single scenario)
-    graph_scenarios(scenarios=[Scenario(rel_path=".", name=None)], graph_dir=args.graph_dir)
+    graph_scenarios(scenarios=[Scenario()], graph_dir=args.graph_dir)
