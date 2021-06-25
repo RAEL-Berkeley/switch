@@ -1,0 +1,3 @@
+scenario,param,value,INDEX_1,INDEX_2,INDEX_3,INDEX_4
+Low Cost,gen_overnight_cost,1334300.0,S-Central_PV-1,2020,,
+High Cost,gen_overnight_cost,3334300.0,S-Central_PV-1,2020,,

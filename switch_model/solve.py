@@ -255,13 +255,13 @@ def post_solve_graph(instance):
         return
 
     if not hasattr(instance, "scenarios"):
-        graph_scenarios([Scenario()])
+        graph_scenarios([Scenario()], verbose=False)
         return
 
     g_scenarios = []
     for scenario in instance.scenarios:
         if instance.options.verbose:
-            print(f"Executing post solve graphing for scenario: {scenario.name}")
+            print(f"Graphing for scenario: {scenario.name}")
         g_scenario = Scenario(
             name=scenario.name,
             output_dir=os.path.join(scenario.path, "outputs")
@@ -269,11 +269,13 @@ def post_solve_graph(instance):
         graph_scenarios(
             scenarios=[g_scenario],
             graph_dir=os.path.join(scenario.path, "graphs"),
-            overwrite=True
+            overwrite=True,
+            verbose=False
         )
         g_scenarios.append(g_scenario)
 
-    graph_scenarios(scenarios=g_scenarios, overwrite=True)
+    print("Creating comparison graphs...")
+    graph_scenarios(scenarios=g_scenarios, overwrite=True, verbose=False)
 
 
 def warm_start(instance):
