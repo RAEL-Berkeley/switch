@@ -20,10 +20,6 @@ from pyomo.solvers.plugins.solvers.gurobi_direct import GurobiDirect
 logger = logging.getLogger('pyomo.solvers')
 
 
-class DegreeError(ValueError):
-    pass
-
-
 def _is_numeric(x):
     try:
         float(x)
@@ -31,26 +27,65 @@ def _is_numeric(x):
         return False
     return True
 
-"""
-min 
-Minimize_System_Cost:
-+10.673275513518735 BuildGen(Battery_Storage_2020)
-+1885.8523792992839 BuildGen(S_Central_PV_1_2020)
-+3193.6947082588722 BuildGen(S_Geothermal_1998)
-+3193.6947082588722 BuildGen(S_Geothermal_2020)
-+0.99718942035373992 BuildStorageEnergy(Battery_Storage_2020)
-+0.30697836004187801 DispatchGen(Battery_Storage_1)
-+0.30697836004187801 DispatchGen(Battery_Storage_2)
-+885.01861200073427 DispatchGen(S_Geothermal_1)
-+885.01861200073427 DispatchGen(S_Geothermal_2)
-"""
 
+class MultiScenarioParamChange:
+    def __init__(self, param, indexes, new_value):
+        self.param = param
+        self.indexes = indexes
+        self.new_value = new_value
+        self.old_value = None
+
+    def apply_change(self, model):
+        param = getattr(model, self.param)[self.indexes]
+        if self.old_value is None:
+            self.old_value = param.value
+        param.value = self.new_value
+
+    def undo_change(self, model):
+        getattr(model, self.param)[self.indexes].value = self.old_value
 
 class MultiScenario:
     def __init__(self, name, changes):
         self.name = name
-        self.changes = changes
+        self.changes: List[MultiScenarioParamChange] = changes
         self.results = ComponentMap()
+        self.model = None
+
+    def __call__(self, model):
+        """
+        Call the instance will update it's model parameter
+        """
+        self.model = model
+        return self
+
+    def __enter__(self):
+        # Apply parameter changes
+        for change in self.changes:
+            change.apply_change(self.model)
+
+        if len(self.results) != 0:
+            for var in self.model.component_data_objects(
+                    ctype=pyomo.core.base.var.Var,
+                    descend_into=True,
+                    active=True,
+                    sort=False):
+                if not var.stale:
+                    var.value = self.results[var]
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Undo changes
+        for change in self.changes:
+            change.undo_change(self.model)
+
+        if len(self.results) != 0:
+            for var in self.model.component_data_objects(
+                    ctype=pyomo.core.base.var.Var,
+                    descend_into=True,
+                    active=True,
+                    sort=False):
+                if not var.stale:
+                    var.value = None
+        self.model = None
 
 
 @SolverFactory.register('gurobi_scenarios', doc='Direct python interface to Gurobi')
@@ -61,52 +96,62 @@ class GurobiMultiScenarioSolver(GurobiDirect):
 
     def _set_instance(self, model, kwds={}):
         """
-        Set instance is called when the model gets created.
+        Set instance is called when the Gurobi model gets created.
+        We override it to allow running _add_scenarios()
         """
-        res = super(GurobiMultiScenarioSolver, self)._set_instance(model, kwds)
+        results = super(GurobiMultiScenarioSolver, self)._set_instance(model, kwds)
         self._add_scenarios(model)
-        return res
+        return results
 
     def _add_scenarios(self, model):
         gurobi_model = self._solver_model
         # Change number scenario
         gurobi_model.NumScenarios = len(self.scenarios)
 
-        old_obj = self._get_objective()
+        # Get the coefficients for our base case
+        old_obj = generate_standard_repn(model.SystemCost.expr, quadratic=True)
 
+        # For each scenario
+        print("Setting scenarios...")
         for i, scenario in enumerate(self.scenarios):
+            # Select the scenario
             gurobi_model.Params.ScenarioNumber = i
             gurobi_model.ScenNName = scenario.name
 
-            # Apply parameter changes
-            for (name, indexes, value) in scenario.changes:
-                param = getattr(model, name)
-                if not hasattr(param, "initial_val"):
-                    param.initial_val = param[indexes]
-                    # TODO undo changes to params
-                    pass
-                param[indexes] = value
+            # Compute the scenario objective function
+            with scenario(model):
+                new_obj = generate_standard_repn(model.SystemCost.expr, quadratic=True)
 
-            # Compute objective function
-            new_obj = self._get_objective()
+            if i == 0:
+                if old_obj.linear_coefs != new_obj.linear_coefs:
+                    raise Exception("First scenario should be the base scenario (no changes).")
+            else:
+                if old_obj.linear_coefs == new_obj.linear_coefs:
+                    raise Exception(f"No difference in objective function"
+                                  f" between scenario '{scenario.name}' and base scenario."
+                                  f" This may be because the parameter that you expected to change"
+                                  f" is used to define another parameter rather than being used in"
+                                  f" an expression. You may need to change the model to use Expression()"
+                                  f" rather than Param().")
 
-            # See diff
-            changes = []
-            for i1, coef in enumerate(old_obj.linear_coefs):
-                new_coef = new_obj.linear_coefs[i1]
-                if new_coef != coef:
-                    changes.append((old_obj.linear_vars[i1], new_coef))
+            # If coefficients are different update Gurobi
+            for old_coef, new_coef, pyomo_var in zip(old_obj.linear_coefs, new_obj.linear_coefs, old_obj.linear_vars):
+                if new_coef != old_coef:
+                    print(f"{scenario.name}: Changing {pyomo_var.name} obj. coef. from {old_coef} to {new_coef}")
+                    gurobi_var = self._pyomo_var_to_solver_var_map[pyomo_var]
+                    gurobi_var.ScenNObj = new_coef
+                    gurobi_var.VTag = pyomo_var.name
 
-            # Set diff as scenario
-            for (pyomo_var, val) in changes:
-                gurobi_var = self._pyomo_var_to_solver_var_map[pyomo_var]
-                gurobi_var.ScenNObj = val
-                pass
-
-    def _get_objective(self):
-        return generate_standard_repn(self._objective.expr, quadratic=True)
+    # def _apply_solver(self, *args, **kwargs):
+    #     self._solver_model.write("problem.lp")
+    #     results = super(GurobiMultiScenarioSolver, self)._apply_solver(*args, **kwargs)
+    #     self._solver_model.write("results.json")
+    #     return results
 
     def _load_vars(self, vars_to_load=None):
+        """
+        Called when loading variables back into model after solving
+        """
         var_map = self._pyomo_var_to_solver_var_map
         ref_vars = self._referenced_variables
         if vars_to_load is None:
@@ -125,12 +170,3 @@ class GurobiMultiScenarioSolver(GurobiDirect):
             for var, val in zip(vars_to_load, vals):
                 if not var.stale:
                     self.scenarios[i].results[var] = val
-
-
-def load_multi_scenario(instance, scenario: MultiScenario):
-    for var in instance.component_data_objects(ctype=pyomo.core.base.var.Var,
-                                               descend_into=True,
-                                               active=True,
-                                               sort=False):
-        if not var.stale:
-            var.value = scenario.results[var]

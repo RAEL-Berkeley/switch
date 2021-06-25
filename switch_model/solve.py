@@ -15,8 +15,6 @@ import platform
 
 from pyomo.solvers.plugins.solvers.direct_or_persistent_solver import DirectOrPersistentSolver
 
-from pyomo.solvers.plugins.solvers.direct_or_persistent_solver import DirectOrPersistentSolver
-
 import switch_model
 from switch_model.tools.graphing.main import graph_scenarios, Scenario
 from switch_model.utilities import (
@@ -24,9 +22,7 @@ from switch_model.utilities import (
     get_module_list, add_module_args, _ScaledVariable, add_git_info
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
-from switch_model.tools.graphing import graph
 from switch_model.utilities.results_info import save_info, add_info, ResultsInfoSection
-from switch_model.utilities.multiscenario import load_multi_scenario, MultiScenario
 
 
 def main(args=None, return_model=False, return_instance=False, attach_data_portal=False):
@@ -207,14 +203,15 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             else:
                 base_dir = os.getcwd()
                 for scenario in instance.scenarios:
-                    load_multi_scenario(instance, scenario)
+                    if instance.options.verbose:
+                        print(f"Executing post solve for scenario: {scenario.name}")
                     scenario_dir = os.path.join(base_dir, scenario.name)
                     if not os.path.exists(scenario_dir):
                         os.makedirs(scenario_dir)
                     os.chdir(scenario_dir)
-                    instance.post_solve()
+                    with scenario(instance):
+                        instance.post_solve()
                     os.chdir(base_dir)
-
                     if instance.options.graph:
                         graph_scenarios(
                             scenarios=[Scenario()],
@@ -754,8 +751,11 @@ def solve(model):
         solver = model.solver
         solver_manager = model.solver_manager
     else:
-        if model.options.gurobi_multi_scenario:
+        kwargs = dict(solver_io=model.options.solver_io)
+
+        if hasattr(model, "scenarios"):
             model.options.solver = "gurobi_scenarios"
+            kwargs["scenarios"] = model.scenarios
 
         # Create a solver object the first time in. We don't do this until a solve is
         # requested, because sometimes a different solve function may be used,
@@ -764,7 +764,7 @@ def solve(model):
         # unused solver object, or get errors if the solver options are invalid.
         #
         # Note previously solver was saved in model however this is very memory inefficient.
-        solver = SolverFactory(model.options.solver, scenarios=model.scenarios, solver_io=model.options.solver_io)
+        solver = SolverFactory(model.options.solver, **kwargs)
 
         # If this option is enabled, gurobi will output an IIS to outputs\iis.ilp.
         if model.options.gurobi_find_iis:

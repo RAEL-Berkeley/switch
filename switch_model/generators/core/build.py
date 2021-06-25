@@ -488,6 +488,7 @@ def define_components(mod):
 
     mod.gen_overnight_cost = Param(
         mod.GEN_BLD_YRS,
+        mutable=True,
         within=NonNegativeReals)
     mod.gen_fixed_om = Param(
         mod.GEN_BLD_YRS,
@@ -495,9 +496,9 @@ def define_components(mod):
     mod.min_data_check('gen_overnight_cost', 'gen_fixed_om')
 
     # Derived annual costs
-    mod.gen_capital_cost_annual = Param(
+    mod.gen_capital_cost_annual = Expression(
         mod.GEN_BLD_YRS,
-        initialize=lambda m, g, bld_yr: (
+        rule=lambda m, g, bld_yr: (
             (m.gen_overnight_cost[g, bld_yr] +
                 m.gen_connect_cost_per_mw[g]) *
             crf(m.interest_rate, m.gen_max_age[g])))
