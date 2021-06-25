@@ -16,7 +16,7 @@ from pyomo.dataportal import DataManagerFactory
 from pyomo.dataportal.plugins.csv_table import CSVTable
 
 from switch_model.utilities.results_info import add_info, ResultsInfoSection
-from switch_model.utilities.multiscenario import MultiScenario, MultiScenarioParamChange
+from switch_model.utilities.multi_scenario import MultiScenario, MultiScenarioParamChange
 from switch_model.utilities.scaling import _ScaledVariable, _get_unscaled_expression
 import pyomo.opt
 
@@ -301,19 +301,6 @@ def load_inputs(model, inputs_dir=None, attach_data_portal=False):
         instance.DataPortal = data
     else:
         del data
-
-    # TODO auto set mutability
-    instance.scenarios = [
-        MultiScenario("Base", []),
-        MultiScenario("Low Cost", [
-            MultiScenarioParamChange("gen_overnight_cost", ("C-NG_CC", 2020), 0),
-            MultiScenarioParamChange("gen_overnight_cost", ("C-NG_CC", 2030), 0),
-        ]),
-        MultiScenario("High Cost", [
-            MultiScenarioParamChange("gen_overnight_cost", ("C-NG_CC", 2020), 10000000),
-            MultiScenarioParamChange("gen_overnight_cost", ("C-NG_CC", 2030), 10000000)
-        ])
-    ]
 
     return instance
 

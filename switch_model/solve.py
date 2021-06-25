@@ -618,10 +618,6 @@ def define_arguments(argparser):
         "--warm-start", default=None,
         help="Path to folder of directory to use for warm start"
     )
-    argparser.add_argument(
-        "--gurobi-multi-scenario", default=False, action="store_true",
-        help="Use Gurobi's multi-scenario solve feature."
-    )
 
 
 def add_recommended_args(argparser):

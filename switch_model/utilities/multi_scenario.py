@@ -7,9 +7,11 @@
 #  rights in this software.
 #  This software is distributed under the 3-clause BSD License.
 #  ___________________________________________________________________________
-
+import os
 from typing import List
 
+import pandas as pd
+from pyomo.core.base.set import UnknownSetDimen
 from pyomo.repn import generate_standard_repn
 from pyomo.solvers.plugins.solvers.gurobi_direct import GurobiDirect
 from pyomo.environ import *
@@ -184,3 +186,40 @@ class GurobiMultiScenarioSolver(GurobiDirect):
                 if not var.stale:
                     results[var] = val
             self.scenarios[i].results = results
+
+
+def load_inputs(mod, _, inputs_dir):
+    """
+    If a multiscenario.csv file exists, loads the inputs from that file
+    """
+    df = pd.read_csv(os.path.join(inputs_dir, "multi_scenario.csv"), index_col=False)
+    assert (df.columns.values == ["scenario", "param", "value", "INDEX_1", "INDEX_2", "INDEX_3", "INDEX_4"]).all()
+
+    scenarios = {}
+    base_scenario_name = "Baseline"
+    scenarios[base_scenario_name] = MultiScenario(base_scenario_name, [])
+
+    for _, row in df.iterrows():
+        scenario_name, param_name, value = row[0:3]
+        if scenario_name == base_scenario_name:
+            raise Exception(f"The scenario name {base_scenario_name} is reserverd.")
+        if scenario_name not in scenarios:
+            scenario = MultiScenario(scenario_name, [])
+            scenarios[scenario_name] = scenario
+        else:
+            scenario = scenarios[scenario_name]
+        param = getattr(mod, param_name)
+        # TODO auto set mutability if possible
+        if not param.mutable:
+            raise Exception(f"Parameter {param_name} must be mutable. Set 'mutable=True'.")
+
+        num_indexes = param.index_set().dimen
+        if num_indexes == UnknownSetDimen:
+            raise Exception(f"Index {param.name} has unknown dimension. Specify dimen= during its creation.")
+
+        indexes = tuple(row[3:3 + num_indexes].values)
+
+        change = MultiScenarioParamChange(param_name, indexes, value)
+        scenario.changes.append(change)
+
+    mod.scenarios = list(scenarios.values())
