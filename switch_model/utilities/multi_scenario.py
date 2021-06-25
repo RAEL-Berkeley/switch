@@ -39,6 +39,7 @@ class MultiScenario:
         self.changes: List[MultiScenarioParamChange] = changes
         self.results = None
         self.model = None
+        self.path = os.path.join(os.getcwd(), name)
 
     def __call__(self, model):
         """

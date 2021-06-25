@@ -196,28 +196,8 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             if instance.options.verbose:
                 timer.step_time()
                 print("Executing post solve functions...")
-            if not hasattr(instance, "scenarios"):
-                instance.post_solve()
-                if instance.options.graph:
-                    graph_scenarios([Scenario()])
-            else:
-                base_dir = os.getcwd()
-                for scenario in instance.scenarios:
-                    if instance.options.verbose:
-                        print(f"Executing post solve for scenario: {scenario.name}")
-                    scenario_dir = os.path.join(base_dir, scenario.name)
-                    if not os.path.exists(scenario_dir):
-                        os.makedirs(scenario_dir)
-                    os.chdir(scenario_dir)
-                    with scenario(instance):
-                        instance.post_solve()
-                    os.chdir(base_dir)
-                    if instance.options.graph:
-                        graph_scenarios(
-                            scenarios=[Scenario()],
-                            outputs_dir=os.path.join(scenario_dir, "outputs"),
-                            graph_dir=os.path.join(scenario_dir, "graphs")
-                        )
+            post_solve_launcher(instance)
+            post_solve_graph(instance)
 
             if instance.options.verbose:
                 print(f"Post solve processing completed in {timer.step_time_as_str()}.")
@@ -251,6 +231,49 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
         )
         import code
         code.interact(banner=banner, local=dict(list(globals().items()) + list(locals().items())))
+
+
+def post_solve_launcher(instance):
+    if not hasattr(instance, "scenarios"):
+        instance.post_solve()
+        return
+
+    base_dir = os.getcwd()
+    for scenario in instance.scenarios:
+        if instance.options.verbose:
+            print(f"Executing post solve for scenario: {scenario.name}")
+        if not os.path.exists(scenario.path):
+            os.makedirs(scenario.path)
+        os.chdir(scenario.path)
+        with scenario(instance):
+            instance.post_solve()
+        os.chdir(base_dir)
+
+
+def post_solve_graph(instance):
+    if not instance.options.graph:
+        return
+
+    if not hasattr(instance, "scenarios"):
+        graph_scenarios([Scenario()])
+        return
+
+    g_scenarios = []
+    for scenario in instance.scenarios:
+        if instance.options.verbose:
+            print(f"Executing post solve graphing for scenario: {scenario.name}")
+        g_scenario = Scenario(
+            name=scenario.name,
+            output_dir=os.path.join(scenario.path, "outputs")
+        )
+        graph_scenarios(
+            scenarios=[g_scenario],
+            graph_dir=os.path.join(scenario.path, "graphs"),
+            overwrite=True
+        )
+        g_scenarios.append(g_scenario)
+
+    graph_scenarios(scenarios=g_scenarios, overwrite=True)
 
 
 def warm_start(instance):

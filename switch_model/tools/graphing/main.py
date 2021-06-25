@@ -18,7 +18,8 @@ import matplotlib
 import plotnine
 
 # Local imports
-from switch_model.utilities import StepTimer, get_module_list
+from switch_model.utilities import StepTimer, get_module_list, query_yes_no
+
 
 class Scenario:
     """
@@ -33,10 +34,12 @@ class Scenario:
     Here, some operation will be run as if the working directory were the directory of the scenario
     """
 
-    def __init__(self, rel_path=".", name=None):
+    def __init__(self, rel_path=".", name=None, input_dir="inputs", output_dir="outputs"):
         self.root_path = os.getcwd()
         self.path = os.path.normpath(os.path.join(self.root_path, rel_path))
         self.name = name
+        self.input_dir = input_dir
+        self.output_dir = output_dir
 
         if not os.path.isdir(self.path):
             raise Exception(f"Directory does not exist: {self.path}")
@@ -155,7 +158,7 @@ class GraphTools:
     Provides utilities to make graphing easier and standardized.
     """
 
-    def __init__(self, scenarios: List[Scenario], graph_dir="graphs", inputs_dir="inputs", outputs_dir="outputs"):
+    def __init__(self, scenarios: List[Scenario], graph_dir):
         """
         Create the GraphTools.
 
@@ -170,10 +173,6 @@ class GraphTools:
 
         self._scenarios: List[Scenario] = scenarios
         self.graph_dir = graph_dir
-        if not os.path.exists(graph_dir):
-            os.mkdir(graph_dir)
-        self.inputs_dir = inputs_dir
-        self.outputs_dir = outputs_dir
 
         # Here we store a mapping of csv file names to their dataframes.
         # Each dataframe has a column called 'scenario' that specifies which scenario
@@ -207,14 +206,15 @@ class GraphTools:
 
         self.transform = TransformTools(self)
 
-    def _load_dataframe(self, path):
+    def _load_dataframe(self, filename, from_inputs):
         """
         Reads a csv file for every scenario and returns a single dataframe containing
         the rows from every scenario with a column for the scenario name and index.
         """
         df_all_scenarios: List[pd.DataFrame] = []
         for i, scenario in enumerate(self._scenarios):
-            df = pd.read_csv(os.path.join(scenario.path, path), index_col=False)
+            folder = scenario.input_dir if from_inputs else scenario.output_dir
+            df = pd.read_csv(os.path.join(scenario.path, folder, filename), index_col=False)
             df['scenario_name'] = scenario.name
             df['scenario_index'] = i
             df_all_scenarios.append(df)
@@ -292,22 +292,19 @@ class GraphTools:
             out += "_" + self._scenarios[self._active_scenario].name
         self._module_figures[out] = (fig, None)
 
-    def get_dataframe(self, csv, folder=None, from_inputs=False):
+    def get_dataframe(self, csv, from_inputs=False):
         """Returns the dataframe for the active scenario. """
-        # Add file extension of missing
+        # Add file extension if missing
         if len(csv) < 5 or csv[-4:] != ".csv":
             csv += ".csv"
-        # Select folder if not specified
-        if folder is None:
-            folder = self.inputs_dir if from_inputs else self.outputs_dir
-        # Get dataframe path
-        path = os.path.join(folder, csv)
+        # Get a unique key for the csv
+        csv_key = csv + str(from_inputs)
 
         # If doesn't exist, create it
-        if path not in self._dfs:
-            self._dfs[path] = self._load_dataframe(path)
+        if csv_key not in self._dfs:
+            self._dfs[csv_key] = self._load_dataframe(csv, from_inputs)
 
-        df = self._dfs[path].copy()  # We return a copy so the source isn't modified
+        df = self._dfs[csv_key].copy()  # We return a copy so the source isn't modified
 
         # If we're not comparing, we only return the rows corresponding to the active scenario
         if not self._is_compare_mode:
@@ -446,9 +443,30 @@ class GraphTools:
         fig.legend([h for _, h in legend_pairs], [l for l, _ in legend_pairs])
 
 
-def graph_scenarios(scenarios: List[Scenario], **kwargs):
+def graph_scenarios(scenarios: List[Scenario], graph_dir=None, overwrite=False):
     # Start a timer
     timer = StepTimer()
+
+    if len(scenarios) == 0:
+        raise Exception("No scenarios to graph")
+
+    # Set defaults for graph_dir
+    if graph_dir is None:
+        if len(scenarios) == 1:
+            graph_dir = "graphs"
+        else:
+            # If graph_dir is not set, make it 'compare_<name_1>_to_<name2>_to_<name3>...'
+            names = map(lambda s: s.name, scenarios)
+            graph_dir = f"compare_{'_to_'.join(names)}"
+
+    # If directory already exists, verify we should overwrite its contents
+    if os.path.exists(graph_dir):
+        if not overwrite and not query_yes_no(
+                f"Folder '{graph_dir}' already exists. Some graphs may be overwritten. Continue?"):
+            return
+    # Otherwise create the directory
+    else:
+        os.mkdir(graph_dir)
 
     # Load the SWITCH modules
     module_names = load_modules(scenarios)
@@ -458,7 +476,7 @@ def graph_scenarios(scenarios: List[Scenario], **kwargs):
         return
 
     # Initialize the graphing tool
-    graph_tools = GraphTools(scenarios=scenarios, **kwargs)
+    graph_tools = GraphTools(scenarios=scenarios, graph_dir=graph_dir)
 
     # Loop through every graphing module
     print(f"Graphing modules:")
