@@ -8,24 +8,11 @@
 #  This software is distributed under the 3-clause BSD License.
 #  ___________________________________________________________________________
 
-import logging
 from typing import List
 
-from pyomo.environ import *
-from pyomo.common.collections import ComponentMap
 from pyomo.repn import generate_standard_repn
-from pyomo.opt.base import SolverFactory
 from pyomo.solvers.plugins.solvers.gurobi_direct import GurobiDirect
-
-logger = logging.getLogger('pyomo.solvers')
-
-
-def _is_numeric(x):
-    try:
-        float(x)
-    except ValueError:
-        return False
-    return True
+from pyomo.environ import *
 
 
 class MultiScenarioParamChange:
@@ -48,7 +35,7 @@ class MultiScenario:
     def __init__(self, name, changes):
         self.name = name
         self.changes: List[MultiScenarioParamChange] = changes
-        self.results = ComponentMap()
+        self.results = None
         self.model = None
 
     def __call__(self, model):
@@ -63,7 +50,7 @@ class MultiScenario:
         for change in self.changes:
             change.apply_change(self.model)
 
-        if len(self.results) != 0:
+        if self.results is not None:
             for var in self.model.component_data_objects(
                     ctype=pyomo.core.base.var.Var,
                     descend_into=True,
@@ -77,7 +64,7 @@ class MultiScenario:
         for change in self.changes:
             change.undo_change(self.model)
 
-        if len(self.results) != 0:
+        if self.results is not None:
             for var in self.model.component_data_objects(
                     ctype=pyomo.core.base.var.Var,
                     descend_into=True,
@@ -90,6 +77,8 @@ class MultiScenario:
 
 @SolverFactory.register('gurobi_scenarios', doc='Direct python interface to Gurobi')
 class GurobiMultiScenarioSolver(GurobiDirect):
+    DEBUG = False
+
     def __init__(self, *args, scenarios=None, **kwargs):
         super(GurobiMultiScenarioSolver, self).__init__(*args, **kwargs)
         self.scenarios: List[MultiScenario] = scenarios
@@ -109,7 +98,7 @@ class GurobiMultiScenarioSolver(GurobiDirect):
         gurobi_model.NumScenarios = len(self.scenarios)
 
         # Get the coefficients for our base case
-        old_obj = generate_standard_repn(model.SystemCost.expr, quadratic=True)
+        base_obj = generate_standard_repn(self._objective.expr, quadratic=True)
 
         # For each scenario
         print("Setting scenarios...")
@@ -120,53 +109,78 @@ class GurobiMultiScenarioSolver(GurobiDirect):
 
             # Compute the scenario objective function
             with scenario(model):
-                new_obj = generate_standard_repn(model.SystemCost.expr, quadratic=True)
+                scenario_obj = generate_standard_repn(self._objective.expr, quadratic=True)
 
+            # Verify that the coefficients are as expected
             if i == 0:
-                if old_obj.linear_coefs != new_obj.linear_coefs:
+                if base_obj.linear_coefs != scenario_obj.linear_coefs:
                     raise Exception("First scenario should be the base scenario (no changes).")
+                continue
             else:
-                if old_obj.linear_coefs == new_obj.linear_coefs:
+                if base_obj.linear_coefs == scenario_obj.linear_coefs:
                     raise Exception(f"No difference in objective function"
-                                  f" between scenario '{scenario.name}' and base scenario."
-                                  f" This may be because the parameter that you expected to change"
-                                  f" is used to define another parameter rather than being used in"
-                                  f" an expression. You may need to change the model to use Expression()"
-                                  f" rather than Param().")
+                                    f" between scenario '{scenario.name}' and base scenario."
+                                    f" This may be because the parameter that you expected to change"
+                                    f" is used to define another parameter rather than being used in"
+                                    f" an expression. You may need to change the model to use Expression()"
+                                    f" rather than Param().")
 
             # If coefficients are different update Gurobi
-            for old_coef, new_coef, pyomo_var in zip(old_obj.linear_coefs, new_obj.linear_coefs, old_obj.linear_vars):
-                if new_coef != old_coef:
-                    print(f"{scenario.name}: Changing {pyomo_var.name} obj. coef. from {old_coef} to {new_coef}")
+            for base_coef, scenario_coef, pyomo_var in zip(
+                    base_obj.linear_coefs,
+                    scenario_obj.linear_coefs,
+                    base_obj.linear_vars):
+                if scenario_coef != base_coef:
+                    if GurobiMultiScenarioSolver.DEBUG:
+                        print(
+                            f"{scenario.name}: Changing {pyomo_var.name} obj. coef. from {base_coef} to {scenario_coef}")
+                    # Get the Gurobi variable
                     gurobi_var = self._pyomo_var_to_solver_var_map[pyomo_var]
-                    gurobi_var.ScenNObj = new_coef
-                    gurobi_var.VTag = pyomo_var.name
+                    # Update the coefficient
+                    gurobi_var.ScenNObj = scenario_coef
 
-    # def _apply_solver(self, *args, **kwargs):
-    #     self._solver_model.write("problem.lp")
-    #     results = super(GurobiMultiScenarioSolver, self)._apply_solver(*args, **kwargs)
-    #     self._solver_model.write("results.json")
-    #     return results
+                    # If debugging tag the variable so we can see it in the results.json
+                    if GurobiMultiScenarioSolver.DEBUG:
+                        gurobi_var.VTag = pyomo_var.name
+
+    def _apply_solver(self, *args, **kwargs):
+        """
+        Called when Pyomo is ready to run the solver.
+        Enabling debug will write the Gurobi problem and results files to allow inspection.
+        """
+        if GurobiMultiScenarioSolver.DEBUG:
+            self._solver_model.write("problem.lp")
+        results = super(GurobiMultiScenarioSolver, self)._apply_solver(*args, **kwargs)
+        if GurobiMultiScenarioSolver.DEBUG:
+            self._solver_model.write("results.json")
+        return results
 
     def _load_vars(self, vars_to_load=None):
         """
-        Called when loading variables back into model after solving
+        Called when loading variables back into model after solving.
+        Overrides the default variable loading
         """
+        # Get vars_to_load and gurobi variables
         var_map = self._pyomo_var_to_solver_var_map
-        ref_vars = self._referenced_variables
         if vars_to_load is None:
             vars_to_load = var_map.keys()
 
         gurobi_vars_to_load = [var_map[pyomo_var] for pyomo_var in vars_to_load]
-        vals = self._solver_model.getAttr("X", gurobi_vars_to_load)
 
-        for var, val in zip(vars_to_load, vals):
+        # Mark variables as not stale
+        ref_vars = self._referenced_variables
+        for var in vars_to_load:
             if ref_vars[var] > 0:
                 var.stale = False
 
+        # For each scenario
         for i, scenario in enumerate(self.scenarios):
+            # Retrieve the results from Gurobi
             self._solver_model.Params.ScenarioNumber = i
             vals = self._solver_model.getAttr("ScenNX", gurobi_vars_to_load)
+            # Add them to the scenario results
+            results = ComponentMap()
             for var, val in zip(vars_to_load, vals):
                 if not var.stale:
-                    self.scenarios[i].results[var] = val
+                    results[var] = val
+            self.scenarios[i].results = results
