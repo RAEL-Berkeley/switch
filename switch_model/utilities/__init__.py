@@ -49,6 +49,25 @@ class CustomModel(AbstractModel):
         # Learn more by reading the documentation on Numerical Issues.
         self.objective_scaling_factor = 1e-3
 
+    def run_modules(self, func_name, *args, soft_exceptions=False):
+        """
+        Will run all the modules that have the specified function.
+        @param soft_exceptions will make it so that exceptions in one module
+        don't interrupt execution.
+        """
+        for module_name, func in get_modules(self.module_list, func_name):
+            if not soft_exceptions:
+                func(*args)
+            else:
+                try:
+                    func(*args)
+                except Exception:
+                    # Print the error that would normally be thrown with the
+                    # full stack trace and an explanatory message
+                    print(f"ERROR: An Exception was thrown while running {func_name} in module"
+                          f" {module_name}."
+                          f"Moving on to the next module.\n{traceback.format_exc()}")
+
     def __setattr__(self, key, val):
         # __setattr__ is called whenever we set an attribute
         # to the model (e.g. model.some_key = some_value)
@@ -126,7 +145,7 @@ def create_model(module_list=None, args=sys.argv[1:]):
     Construct a Pyomo AbstractModel using the Switch modules or packages
     in the given list and return the model. The following utility methods
     are attached to the model as class methods to simplify their use:
-    min_data_check(), load_inputs(), pre_solve(), post_solve().
+    min_data_check(), load_inputs().
 
     This is implemented as calling the following functions for each module
     that has them defined:
@@ -167,36 +186,26 @@ def create_model(module_list=None, args=sys.argv[1:]):
     # Bind utility functions to the model as class objects
     # Should we be formally extending their class instead?
     _add_min_data_check(model)
-    model.get_modules = types.MethodType(get_modules, model)
     model.load_inputs = types.MethodType(load_inputs, model)
-    model.pre_solve = types.MethodType(pre_solve, model)
-    model.post_solve = types.MethodType(post_solve, model)
 
     # Define and parse model configuration options
     argparser = _ArgumentParser(allow_abbrev=False)
-    for module in model.get_modules():
-        if hasattr(module, 'define_arguments'):
-            module.define_arguments(argparser)
+    model.run_modules("define_arguments", argparser)
     model.options = argparser.parse_args(args)
 
     # Define model components
-    for module in model.get_modules():
-        if hasattr(module, 'define_dynamic_lists'):
-            module.define_dynamic_lists(model)
-    for module in model.get_modules():
-        if hasattr(module, 'define_components'):
-            module.define_components(model)
-    for module in model.get_modules():
-        if hasattr(module, 'define_dynamic_components'):
-            module.define_dynamic_components(model)
+    model.run_modules("define_dynamic_lists", model)
+    model.run_modules("define_components", model)
+    model.run_modules("define_dynamic_components", model)
 
     return model
 
-
-def get_modules(model):
+def get_modules(module_list, func_name):
     """ Return a list of loaded module objects for this model. """
-    for m in model.module_list:
-        yield sys.modules[m]
+    for m in module_list:
+        module = sys.modules[m]
+        if hasattr(module, func_name):
+                yield module.__name__, getattr(module, func_name)
 
 
 def make_iterable(item):
@@ -273,27 +282,24 @@ def load_inputs(model, inputs_dir=None, attach_data_portal=False):
     timer = StepTimer()
     data = DataPortal(model=model)
     data.load_aug = types.MethodType(load_aug, data)
-    for module in model.get_modules():
-        if hasattr(module, 'load_inputs'):
-            module.load_inputs(model, data, inputs_dir)
+    model.run_modules("load_inputs", model, data, inputs_dir)
     if model.options.verbose:
         print(f"Data read in {timer.step_time_as_str()}.\n")
 
-    # At some point, pyomo deprecated 'create' in favor of 'create_instance'.
-    # Determine which option is available and use that.
     if model.options.verbose:
         print("Creating instance...")
-    if hasattr(model, 'create_instance'):
-        instance = model.create_instance(data)
-        # We want our functions from CustomModel to be accessible
-        # Somehow simply setting the class to CustomModel allows us to do this
-        # This is the same thing that happens in the Pyomo library at the end of
-        # model.create_instance(). Note that Pyomo's ConcreteModel is basically the same as
-        # our CustomModel so we're not causing any issues by changing from ConcreteModel
-        # to CustomModel
-        instance.__class__ = CustomModel
-    else:
-        instance = model.create(data)
+
+    # Call to Pyomo library
+    instance = model.create_instance(data)
+
+    # We want our functions from CustomModel to be accessible
+    # Somehow simply setting the class to CustomModel allows us to do this
+    # This is the same thing that happens in the Pyomo library at the end of
+    # model.create_instance(). Note that Pyomo's ConcreteModel is basically the same as
+    # our CustomModel so we're not causing any issues by changing from ConcreteModel
+    # to CustomModel
+    instance.__class__ = CustomModel
+
     if model.options.verbose:
         print(f"Instance created from data in {timer.step_time_as_str()}.\n")
 
@@ -356,41 +362,6 @@ def save_inputs_as_dat(model, instance, save_path="inputs/complete_inputs.dat",
                 raise ValueError(
                     "Error! Component type {} not recognized for model element '{}'.".
                     format(comp_class, component_name))
-
-def pre_solve(instance, outputs_dir=None):
-    """
-    Call pre-solve function (if present) in all modules used to compose this model.
-    This function can be used to adjust the instance after it is created and before it is solved.
-    """
-    for module in instance.get_modules():
-        if hasattr(module, 'pre_solve'):
-            module.pre_solve(instance)
-
-def post_solve(instance, outputs_dir=None):
-    """
-    Call post-solve function (if present) in all modules used to compose this model.
-    This function can be used to report or save results from the solved model.
-    """
-    if outputs_dir is None:
-        outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
-    if not os.path.exists(outputs_dir):
-        os.makedirs(outputs_dir)
-
-    # TODO: implement a check to call post solve functions only if
-    # solver termination condition is not 'infeasible' or 'unknown'
-    # (the latter may occur when there are problems with licenses, etc)
-
-    for module in instance.get_modules():
-        if hasattr(module, 'post_solve'):
-            # Try-catch is so that if one module fails on post-solve
-            # the other modules still run
-            try:
-                module.post_solve(instance, outputs_dir)
-            except Exception:
-                # Print the error that would normally be thrown with the
-                # full stack trace and an explanatory message
-                print(f"ERROR: Module {module.__name__} threw an Exception while running post_solve(). "
-                      f"Moving on to the next module.\n{traceback.format_exc()}")
 
 def min_data_check(model, *mandatory_model_components):
     """

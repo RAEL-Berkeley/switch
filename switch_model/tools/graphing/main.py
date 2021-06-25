@@ -18,7 +18,7 @@ import matplotlib
 import plotnine
 
 # Local imports
-from switch_model.utilities import StepTimer, get_module_list, query_yes_no
+from switch_model.utilities import StepTimer, get_module_list, query_yes_no, get_modules
 
 
 class Scenario:
@@ -482,28 +482,19 @@ def graph_scenarios(scenarios: List[Scenario], graph_dir=None, overwrite=False, 
     # Loop through every graphing module
     if verbose:
         print(f"Graphing modules:")
-    for name, func_graph in iterate_modules(module_names, 'graph'):
+    for name, func_graph in get_modules(module_names, 'graph'):
         # Graph
         if verbose:
             print(f"{name}.graph()...")
         graph_tools.graph_module(func_graph)
 
     if len(scenarios) > 1:
-        for name, func_compare in iterate_modules(module_names, 'compare'):
+        for name, func_compare in get_modules(module_names, 'compare'):
             if verbose:
                 print(f"{name}.compare()...")
             graph_tools.compare_module(func_compare)
 
     print(f"Took {timer.step_time_as_str()} to generate all graphs.")
-
-
-def iterate_modules(module_names, func_name):
-    """This function is an Iterable that returns only modules with function graph()"""
-    for name in module_names:
-        module = sys.modules[name]
-        # If the module has graph(), yield the module
-        if hasattr(module, func_name):
-            yield name, getattr(module, func_name)
 
 
 def load_modules(scenarios, verbose):

@@ -129,7 +129,11 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
 
         #### Below here, we refer to instance instead of model ####
 
-        instance.pre_solve()
+
+        # Call pre-solve function (if present) in all modules used to compose this model.
+        # This function can be used to adjust the instance after it is created and before it is solved.
+        instance.run_modules("pre_solve", instance)
+
         if instance.options.verbose:
             print(f"Total time spent constructing model: {timer.step_time_as_str()}.\n")
 
@@ -196,8 +200,9 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             if instance.options.verbose:
                 timer.step_time()
                 print("Executing post solve functions...")
-            post_solve_launcher(instance)
-            post_solve_graph(instance)
+            post_solve_start(instance)
+            if instance.options.graph:
+                post_solve_graph(instance)
 
             if instance.options.verbose:
                 print(f"Post solve processing completed in {timer.step_time_as_str()}.")
@@ -210,7 +215,7 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
 
         save_info(
             os.path.join(getattr(instance.options, "outputs_dir", "outputs"),
-                         "info.txt")
+                         "results.txt")
         )
 
         if instance.options.verbose:
@@ -233,9 +238,12 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
         code.interact(banner=banner, local=dict(list(globals().items()) + list(locals().items())))
 
 
-def post_solve_launcher(instance):
+def post_solve_start(instance):
     if not hasattr(instance, "scenarios"):
-        instance.post_solve()
+        outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
+        if not os.path.exists(outputs_dir):
+            os.makedirs(outputs_dir)
+        instance.run_modules("post_solve", instance, outputs_dir, soft_exceptions=True)
         return
 
     base_dir = os.getcwd()
@@ -245,15 +253,14 @@ def post_solve_launcher(instance):
         if not os.path.exists(scenario.path):
             os.makedirs(scenario.path)
         os.chdir(scenario.path)
+        outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
+        if not os.path.exists(outputs_dir):
+            os.makedirs(outputs_dir)
         with scenario(instance):
-            instance.post_solve()
+            instance.run_modules("post_solve", instance, outputs_dir, soft_exceptions=True)
         os.chdir(base_dir)
 
-
 def post_solve_graph(instance):
-    if not instance.options.graph:
-        return
-
     if not hasattr(instance, "scenarios"):
         graph_scenarios([Scenario()], verbose=False)
         return
