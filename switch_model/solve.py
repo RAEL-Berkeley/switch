@@ -22,7 +22,7 @@ from switch_model.utilities import (
     get_module_list, add_module_args, _ScaledVariable, add_git_info, MultiScenario, Folder
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
-from switch_model.utilities.results_info import save_info, add_info, ResultsInfoSection
+from switch_model.utilities.results_info import save_info, add_general_info
 
 
 def main(args=None, return_model=False, return_instance=False, attach_data_portal=False):
@@ -106,7 +106,7 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
             if not os.path.isdir(model.options.outputs_dir):
                 raise IOError("Directory specified for prior solution does not exist.")
 
-        add_info("Host name", platform.node(), section=ResultsInfoSection.GENERAL)
+        add_general_info("Host name", platform.node())
         add_git_info()
 
         # get a list of modules to iterate through
@@ -208,10 +208,10 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
                 print(f"Post solve processing completed in {timer.step_time_as_str()}.")
 
         total_time = start_to_end_timer.step_time_as_str()
-        add_info("Total run time", total_time, section=ResultsInfoSection.GENERAL)
+        add_general_info("Total run time", total_time)
 
-        add_info("End date", datetime.datetime.now().strftime('%Y-%m-%d'), section=ResultsInfoSection.GENERAL)
-        add_info("End time", datetime.datetime.now().strftime('%H:%M:%S'), section=ResultsInfoSection.GENERAL)
+        add_general_info("End date", datetime.datetime.now().strftime('%Y-%m-%d'))
+        add_general_info("End time", datetime.datetime.now().strftime('%H:%M:%S'))
 
         save_info(
             os.path.join(getattr(instance.options, "outputs_dir", "outputs"),

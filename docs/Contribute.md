@@ -53,25 +53,24 @@ Within the `post_solve()` function you may
 - Call `write_table()` to create
 a .csv file with data from the solution (see existing modules for examples).
   
-- Call `add_info()` (from `utilities/result_info.py`) to add a line 
-of information to the `outputs/info.txt` file. `add_info()` can also be added to `graph()`.
+- Call `model.add_info()` (from `utilities/result_info.py`) to add a line 
+of information to the `outputs/results.txt` file.
 
 ### Example
 
 ```python
-from switch_model.utilities.results_info import add_info
 from switch_model.reporting import write_table
 import os
 ...
 def post_solve(instance, outdir):
     ...
-    # This will add the a line to info.txt in the outputs folder
-    add_info("Some important value", instance.important_value)
+    # This will add the a line to results.txt in the outputs folder
+    instance.add_info("Some important value", instance.important_value)
     ...
     # This will create my_table.csv
     write_table(
-        instance, 
-        instance.TIMEPOINTS, # Set that the values function will iterate over
+        instance,
+        instance.TIMEPOINTS,  # Set that the values function will iterate over
         output_file=os.path.join(outdir, "my_table.csv"),
         headings=("timepoint", "some value"),
         values=lambda m, t: (t, m.some_value[t])

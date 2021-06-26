@@ -49,7 +49,10 @@ class MultiScenario:
 
     def __enter__(self):
         if self.model is None:
-            raise Exception("Model not specified when calling with MultiScenario. Should call with multiscenario(model)")
+            raise Exception(
+                "Model not specified when calling with MultiScenario. Should call with multiscenario(model)")
+        self.model.active_scenario = self
+
         # Apply parameter changes
         for change in self.changes:
             change.apply_change(self.model)
@@ -76,6 +79,7 @@ class MultiScenario:
                     sort=False):
                 if not var.stale:
                     var.value = None
+        self.model.active_scenario = None
         self.model = None
 
 

@@ -15,11 +15,9 @@
 *.vcf
 *.xml
 *.pickle
-examples/**/outputs/*.csv
+examples/**/outputs/**/*.csv
 examples/**/outputs/*.txt
-examples/**/graphs/*.png
-examples/**/info.txt
-examples/**/compare_*/**
+examples/**/graphs/**/*.png
 
 ### dotenv ###
 .env

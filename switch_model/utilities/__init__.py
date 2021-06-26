@@ -15,7 +15,7 @@ from pyomo.core.base.set import UnknownSetDimen
 from pyomo.dataportal import DataManagerFactory
 from pyomo.dataportal.plugins.csv_table import CSVTable
 
-from switch_model.utilities.results_info import add_info, ResultsInfoSection
+from switch_model.utilities.results_info import add_results_info, add_general_info
 from switch_model.utilities.multi_scenario import MultiScenario, MultiScenarioParamChange
 from switch_model.utilities.scaling import _ScaledVariable, _get_unscaled_expression
 import pyomo.opt
@@ -50,9 +50,8 @@ class CustomModel(AbstractModel):
         self.objective_scaling_factor = 1e-3
         # multi_scenarios is used specifically with the gurobi multi scenario feature
         # By default we just assign one base scenario
-        self.multi_scenarios = [
-            MultiScenario(name="Base scenario")
-        ]
+        self.active_scenario = MultiScenario(name="Base scenario")
+        self.multi_scenarios = [self.active_scenario]
         self.force_mutable = set()
 
     def run_modules(self, func_name, *args, soft_exceptions=False):
@@ -147,6 +146,12 @@ class CustomModel(AbstractModel):
         """
         if not hasattr(self, "dual"):
             self.dual = Suffix(direction=Suffix.IMPORT)
+
+    def add_info(self, key, value, is_general=False):
+        if is_general:
+            add_general_info(key, value)
+        else:
+            add_results_info(key, self.active_scenario.name, value)
 
 
 def define_AbstractModel(*module_list, **kwargs):
@@ -900,8 +905,8 @@ def add_git_info():
     try:
         commit_num = run_command("git rev-parse HEAD")
         branch = run_command("git rev-parse --abbrev-ref HEAD")
-        add_info("Git Commit", commit_num, section=ResultsInfoSection.GENERAL)
-        add_info("Git Branch", branch, section=ResultsInfoSection.GENERAL)
+        add_general_info("Git Commit", commit_num)
+        add_general_info("Git Branch", branch)
     except:
         warnings.warn("Failed to get Git Branch or Commit Hash for info.txt.")
 
