@@ -92,11 +92,6 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
 
         # Define the model
         model = create_model(modules, args=args)
-        # multi_scenarios is used specifically with the gurobi multi scenario feature
-        # By default we just assign one base scenario
-        model.multi_scenarios = [
-            MultiScenario(name="Base scenario")
-        ]
 
         # Add any suffixes specified on the command line (usually only iis)
         add_extra_suffixes(model)
@@ -259,7 +254,8 @@ def post_solve_start(instance):
         # If we are a multi_scenario we move into the scenario folder
         # Create the outputs_dir if it doesn't exist
         scenario_dir = os.path.join(outputs_dir, scenario.name)
-        os.mkdir(scenario_dir)
+        if not os.path.exists(scenario_dir):
+            os.mkdir(scenario_dir)
 
         # Run post solve
         # Note that with scenario(instance) will set the variables

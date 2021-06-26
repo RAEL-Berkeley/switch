@@ -488,7 +488,6 @@ def define_components(mod):
 
     mod.gen_overnight_cost = Param(
         mod.GEN_BLD_YRS,
-        mutable=True,
         within=NonNegativeReals)
     mod.gen_fixed_om = Param(
         mod.GEN_BLD_YRS,

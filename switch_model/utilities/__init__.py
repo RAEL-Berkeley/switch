@@ -48,6 +48,12 @@ class CustomModel(AbstractModel):
         # and error and this tool https://github.com/staadecker/lp-analyzer.
         # Learn more by reading the documentation on Numerical Issues.
         self.objective_scaling_factor = 1e-3
+        # multi_scenarios is used specifically with the gurobi multi scenario feature
+        # By default we just assign one base scenario
+        self.multi_scenarios = [
+            MultiScenario(name="Base scenario")
+        ]
+        self.force_mutable = set()
 
     def run_modules(self, func_name, *args, soft_exceptions=False):
         """
@@ -88,6 +94,15 @@ class CustomModel(AbstractModel):
             super().__setattr__(val.scaled_name, val)
             # Add the unscaled expression to the model with the original value provided by 'key'
             super().__setattr__(key, _get_unscaled_expression(val))
+        # We add a catch for the case where we might be adding a parameter
+        # which has be listed as 'force_mutable'. If this is the case,
+        # we must change the paramter to be mutable. Note that normally,
+        # we aren't able to set the paramter to mutable however since it has
+        # just been created we're ok and we can do it by accessing the private
+        # property _mutable
+        elif isinstance(val, Param) and key in self.force_mutable:
+            val._mutable = True
+            super().__setattr__(key, val)
         else:
             super().__setattr__(key, val)
 
@@ -194,6 +209,7 @@ def create_model(module_list=None, args=sys.argv[1:]):
     model.options = argparser.parse_args(args)
 
     # Define model components
+    model.run_modules("pre_construct", model, getattr(model.options, "inputs_dir", "inputs"))
     model.run_modules("define_dynamic_lists", model)
     model.run_modules("define_components", model)
     model.run_modules("define_dynamic_components", model)
