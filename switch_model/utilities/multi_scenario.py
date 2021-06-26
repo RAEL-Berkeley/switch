@@ -34,12 +34,11 @@ class MultiScenarioParamChange:
         getattr(model, self.param)[self.indexes].value = self.old_value
 
 class MultiScenario:
-    def __init__(self, name, changes):
+    def __init__(self, name, changes=None):
         self.name = name
-        self.changes: List[MultiScenarioParamChange] = changes
+        self.changes: List[MultiScenarioParamChange] = [] if changes is None else changes
         self.results = None
         self.model = None
-        self.path = os.path.join(os.getcwd(), name)
 
     def __call__(self, model):
         """
@@ -49,6 +48,8 @@ class MultiScenario:
         return self
 
     def __enter__(self):
+        if self.model is None:
+            raise Exception("Model not specified when calling with MultiScenario. Should call with multiscenario(model)")
         # Apply parameter changes
         for change in self.changes:
             change.apply_change(self.model)
@@ -197,13 +198,9 @@ def load_inputs(mod, _, inputs_dir):
     assert (df.columns.values == ["scenario", "param", "value", "INDEX_1", "INDEX_2", "INDEX_3", "INDEX_4"]).all()
 
     scenarios = {}
-    base_scenario_name = "Baseline"
-    scenarios[base_scenario_name] = MultiScenario(base_scenario_name, [])
 
     for _, row in df.iterrows():
         scenario_name, param_name, value = row[0:3]
-        if scenario_name == base_scenario_name:
-            raise Exception(f"The scenario name {base_scenario_name} is reserverd.")
         if scenario_name not in scenarios:
             scenario = MultiScenario(scenario_name, [])
             scenarios[scenario_name] = scenario
@@ -223,4 +220,4 @@ def load_inputs(mod, _, inputs_dir):
         change = MultiScenarioParamChange(param_name, indexes, value)
         scenario.changes.append(change)
 
-    mod.scenarios = list(scenarios.values())
+    mod.multi_scenarios.extend(list(scenarios.values()))

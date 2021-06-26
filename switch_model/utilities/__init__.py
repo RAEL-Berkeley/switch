@@ -200,12 +200,33 @@ def create_model(module_list=None, args=sys.argv[1:]):
 
     return model
 
+
+class Folder:
+    cwd = os.getcwd()
+
+    def __init__(self, path, move_into=True, create=True):
+        if create:
+            if not os.path.exists(path):
+                os.mkdir(path)
+        else:
+            assert os.path.isdir(path)
+        self.path = path
+        self.move_into = move_into
+
+    def __enter__(self):
+        if self.move_into:
+            os.chdir(self.path)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.move_into:
+            os.chdir(Folder.cwd)
+
 def get_modules(module_list, func_name):
     """ Return a list of loaded module objects for this model. """
     for m in module_list:
         module = sys.modules[m]
         if hasattr(module, func_name):
-                yield module.__name__, getattr(module, func_name)
+            yield module.__name__, getattr(module, func_name)
 
 
 def make_iterable(item):

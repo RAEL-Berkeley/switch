@@ -18,38 +18,22 @@ import matplotlib
 import plotnine
 
 # Local imports
-from switch_model.utilities import StepTimer, get_module_list, query_yes_no, get_modules
+from switch_model.utilities import StepTimer, get_module_list, query_yes_no, get_modules, Folder
 
 
 class Scenario:
     """
     Stores the information related to a scenario such as the scenario name (used while graphing)
     and the scenario path.
-
-    Also allows doing:
-
-    with scenario:
-        # some operation
-
-    Here, some operation will be run as if the working directory were the directory of the scenario
     """
-
     def __init__(self, rel_path=".", name=None, input_dir="inputs", output_dir="outputs"):
-        self.root_path = os.getcwd()
-        self.path = os.path.normpath(os.path.join(self.root_path, rel_path))
+        self.path = os.path.normpath(rel_path)
         self.name = name
         self.input_dir = input_dir
         self.output_dir = output_dir
 
         if not os.path.isdir(self.path):
             raise Exception(f"Directory does not exist: {self.path}")
-
-    def __enter__(self):
-        os.chdir(self.path)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        os.chdir(self.root_path)
-
 
 class TransformTools:
     """
@@ -467,7 +451,7 @@ def graph_scenarios(scenarios: List[Scenario], graph_dir=None, overwrite=False, 
             return
     # Otherwise create the directory
     else:
-        os.mkdir(graph_dir)
+        os.makedirs(graph_dir)
 
     # Load the SWITCH modules
     module_names = load_modules(scenarios, verbose)
@@ -502,7 +486,7 @@ def load_modules(scenarios, verbose):
 
     def read_modules_txt(scenario):
         """Returns a sorted list of all the modules in a run folder (by reading modules.txt)"""
-        with scenario:
+        with Folder(scenario.path):
             module_list = get_module_list(include_solve_module=False)
         return np.sort(module_list)
 

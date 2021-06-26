@@ -19,7 +19,7 @@ import switch_model
 from switch_model.tools.graphing.main import graph_scenarios, Scenario
 from switch_model.utilities import (
     create_model, _ArgumentParser, StepTimer, make_iterable, LogOutput, warn, query_yes_no,
-    get_module_list, add_module_args, _ScaledVariable, add_git_info
+    get_module_list, add_module_args, _ScaledVariable, add_git_info, MultiScenario, Folder
 )
 from switch_model.upgrade import do_inputs_need_upgrade, upgrade_inputs
 from switch_model.utilities.results_info import save_info, add_info, ResultsInfoSection
@@ -92,6 +92,11 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
 
         # Define the model
         model = create_model(modules, args=args)
+        # multi_scenarios is used specifically with the gurobi multi scenario feature
+        # By default we just assign one base scenario
+        model.multi_scenarios = [
+            MultiScenario(name="Base scenario")
+        ]
 
         # Add any suffixes specified on the command line (usually only iis)
         add_extra_suffixes(model)
@@ -239,50 +244,54 @@ def main(args=None, return_model=False, return_instance=False, attach_data_porta
 
 
 def post_solve_start(instance):
-    if not hasattr(instance, "scenarios"):
-        outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
-        if not os.path.exists(outputs_dir):
-            os.makedirs(outputs_dir)
+    # The outputs dir
+    outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
+
+    # If we have multiple scenarios
+    if len(instance.multi_scenarios) == 1:
         instance.run_modules("post_solve", instance, outputs_dir, soft_exceptions=True)
         return
 
-    base_dir = os.getcwd()
-    for scenario in instance.scenarios:
+    # For each scenario
+    for scenario in instance.multi_scenarios:
         if instance.options.verbose:
             print(f"Executing post solve for scenario: {scenario.name}")
-        if not os.path.exists(scenario.path):
-            os.makedirs(scenario.path)
-        os.chdir(scenario.path)
-        outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
-        if not os.path.exists(outputs_dir):
-            os.makedirs(outputs_dir)
+        # If we are a multi_scenario we move into the scenario folder
+        # Create the outputs_dir if it doesn't exist
+        scenario_dir = os.path.join(outputs_dir, scenario.name)
+        os.mkdir(scenario_dir)
+
+        # Run post solve
+        # Note that with scenario(instance) will set the variables
+        # to be the results of that scenario
         with scenario(instance):
-            instance.run_modules("post_solve", instance, outputs_dir, soft_exceptions=True)
-        os.chdir(base_dir)
+            instance.run_modules("post_solve", instance, scenario_dir, soft_exceptions=True)
+
 
 def post_solve_graph(instance):
-    if not hasattr(instance, "scenarios"):
+    if len(instance.multi_scenarios) == 1:
         graph_scenarios([Scenario()], verbose=False)
         return
 
     g_scenarios = []
-    for scenario in instance.scenarios:
+    for scenario in instance.multi_scenarios:
         if instance.options.verbose:
             print(f"Graphing for scenario: {scenario.name}")
         g_scenario = Scenario(
             name=scenario.name,
-            output_dir=os.path.join(scenario.path, "outputs")
+            output_dir=os.path.join("outputs", scenario.name)
         )
         graph_scenarios(
             scenarios=[g_scenario],
-            graph_dir=os.path.join(scenario.path, "graphs"),
+            graph_dir=os.path.join("graphs", scenario.name),
             overwrite=True,
             verbose=False
         )
         g_scenarios.append(g_scenario)
 
     print("Creating comparison graphs...")
-    graph_scenarios(scenarios=g_scenarios, overwrite=True, verbose=False)
+    graph_scenarios(scenarios=g_scenarios, overwrite=True, verbose=False,
+                    graph_dir=os.path.join("graphs", "compare_scenarios"))
 
 
 def warm_start(instance):
@@ -781,9 +790,9 @@ def solve(model):
     else:
         kwargs = dict(solver_io=model.options.solver_io)
 
-        if hasattr(model, "scenarios"):
+        if len(model.multi_scenarios) > 1:
             model.options.solver = "gurobi_scenarios"
-            kwargs["scenarios"] = model.scenarios
+            kwargs["scenarios"] = model.multi_scenarios
 
         # Create a solver object the first time in. We don't do this until a solve is
         # requested, because sometimes a different solve function may be used,
