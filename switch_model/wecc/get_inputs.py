@@ -72,7 +72,7 @@ modules = [
 ]
 
 
-def switch_to_input_dir(config):
+def switch_to_input_dir(config, overwrite):
     inputs_dir = config["inputs_dir"]
 
     # Create inputs_dir if it doesn't exist
@@ -80,7 +80,7 @@ def switch_to_input_dir(config):
         os.makedirs(inputs_dir)
         print("Inputs directory created.")
     else:
-        if not query_yes_no(
+        if not overwrite and not query_yes_no(
             "Inputs directory already exists. Allow contents to be overwritten?"
         ):
             raise Exception("User cancelled run.")
@@ -106,21 +106,25 @@ def main():
                         help="Only run the post solve functions (don't query db)")
     parser.add_argument("--add-storage", default=False, action='store_true',
                         help="Flag used by Martin while studying LDES. You likely don't need this.")
+    parser.add_argument("--overwrite", default=False, action="store_true",
+                        help="If specified, will not prompt before overwriting previous inputs folder.")
     args = parser.parse_args()  # Makes switch get_inputs --help works
 
     # Load values from config.yaml
     full_config = load_config()
-    switch_to_input_dir(full_config)
+    switch_to_input_dir(full_config, args.overwrite)
 
     if not args.post_only:
         query_db(full_config, skip_cf=args.skip_cf)
     if args.add_storage:
         from switch_model.tools.add_storage import main
-        main(
-            run_post_solve=False, # We will run post solve automatically right afterwards
+        using_multi_scenario = main(
+            run_post_solve=False,  # We will run post solve automatically right afterwards
             scenario_config=full_config["add_storage"],
             change_dir=False
         )
+        if using_multi_scenario:
+            modules.append("switch_model.utilities.multi_scenario")
     post_process()
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
 
@@ -1118,6 +1122,9 @@ def replace_plants_in_zone_all():
     def replace_rows(plants_to_copy, filename, df=None, plants_col="GENERATION_PROJECT", load_column=None):
         # If the df does not already exist, read the file
         if df is None:
+            if not os.path.exists(filename):
+                return
+
             df = pd.read_csv(filename, index_col=False)
 
         # Save the columns for later use
@@ -1175,6 +1182,7 @@ def replace_plants_in_zone_all():
     replace_rows(plants_to_replace, "generation_projects_info.csv", load_column="gen_load_zone", df=plants)
     replace_rows(plants_to_replace, "gen_build_costs.csv")
     replace_rows(plants_to_replace, "gen_build_predetermined.csv")
+    replace_rows(plants_to_replace, "multi_scenario.csv", plants_col="INDEX_1")
 
 
 

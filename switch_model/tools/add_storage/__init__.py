@@ -82,7 +82,7 @@ def drop_previous_candidate_storage():
     # Find projects that we should drop (candidate storage)
     gen_to_drop = gen[should_drop]["GENERATION_PROJECT"]
     # Verify we're dropping the right amount
-    assert len(gen_to_drop) == 50 # 50 is the number of load zones. we expect one candidate per load zone
+    assert len(gen_to_drop) == 50  # 50 is the number of load zones. we expect one candidate per load zone
 
     # Drop and write output
     gen = gen[~should_drop]
@@ -92,6 +92,29 @@ def drop_previous_candidate_storage():
     costs = pd.read_csv("gen_build_costs.csv", index_col=False)
     costs = costs[~costs["GENERATION_PROJECT"].isin(gen_to_drop)]
     costs.to_csv("gen_build_costs.csv", index=False)
+
+
+def create_multi_scenario(costs_scenarios):
+    if costs_scenarios.empty:
+        return False
+
+    costs_scenarios = costs_scenarios.drop("gen_fixed_om", axis=1)
+
+    costs_scenarios = costs_scenarios.melt(
+        id_vars=["multi_scenario", "GENERATION_PROJECT", "build_year"],
+        var_name="param",
+        value_name="value",
+    )
+
+    costs_scenarios = costs_scenarios.rename({
+        "multi_scenario": "scenario",
+        "GENERATION_PROJECT": "INDEX_1",
+        "build_year": "INDEX_2"
+    }, axis=1)
+
+    costs_scenarios = costs_scenarios[["scenario", "param", "value", "INDEX_1", "INDEX_2"]]
+    costs_scenarios.to_csv("multi_scenario.csv", index=False)
+    return True
 
 def main(run_post_solve=True, scenario_config=None, change_dir=True):
     print("Adding candidate storage from GSheets...")
@@ -117,7 +140,13 @@ def main(run_post_solve=True, scenario_config=None, change_dir=True):
 
     # Get the plant costs from GSheets and append to costs
     storage_costs = fetch_df("costs", "costs_scenario")
-    append_to_csv("gen_build_costs.csv", storage_costs, primary_key=["GENERATION_PROJECT", "build_year"])
+    # Pick only the base scenario
+    is_baseline = storage_costs["multi_scenario"].isna()
+    baseline, multi_scenarios = storage_costs[is_baseline], storage_costs[~is_baseline]
+    append_to_csv("gen_build_costs.csv", baseline, primary_key=["GENERATION_PROJECT", "build_year"])
+
+    # Create multi_scenario
+    using_multi_scenario = create_multi_scenario(multi_scenarios)
 
     # Change plants with _ALL_ZONES to a plant in every zone
     if run_post_solve:
@@ -134,6 +163,8 @@ def main(run_post_solve=True, scenario_config=None, change_dir=True):
     pd.concat([
         pd.read_csv("graph_tech_types.csv", index_col=False), gen_type
     ]).to_csv("graph_tech_types.csv", index=False)
+
+    return using_multi_scenario
 
 
 if __name__ == "__main__":
