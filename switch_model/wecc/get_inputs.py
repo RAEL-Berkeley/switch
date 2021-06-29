@@ -104,8 +104,6 @@ def main():
                              "want to wait for the command.")
     parser.add_argument("--post-only", default=False, action='store_true',
                         help="Only run the post solve functions (don't query db)")
-    parser.add_argument("--add-storage", default=False, action='store_true',
-                        help="Flag used by Martin while studying LDES. You likely don't need this.")
     parser.add_argument("--overwrite", default=False, action="store_true",
                         help="If specified, will not prompt before overwriting previous inputs folder.")
     args = parser.parse_args()  # Makes switch get_inputs --help works
@@ -116,7 +114,7 @@ def main():
 
     if not args.post_only:
         query_db(full_config, skip_cf=args.skip_cf)
-    if args.add_storage:
+    if "add_storage" in full_config:
         from switch_model.tools.add_storage import main
         using_multi_scenario = main(
             run_post_solve=False,  # We will run post solve automatically right afterwards
