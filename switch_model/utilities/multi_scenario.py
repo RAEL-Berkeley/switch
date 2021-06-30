@@ -85,7 +85,7 @@ class MultiScenario:
 
 @SolverFactory.register('gurobi_scenarios', doc='Direct python interface to Gurobi')
 class GurobiMultiScenarioSolver(GurobiDirect):
-    DEBUG = False
+    DEBUG = True
 
     def __init__(self, *args, scenarios=None, **kwargs):
         super(GurobiMultiScenarioSolver, self).__init__(*args, **kwargs)
@@ -96,7 +96,11 @@ class GurobiMultiScenarioSolver(GurobiDirect):
         Set instance is called when the Gurobi model gets created.
         We override it to allow running _add_scenarios()
         """
+        if GurobiMultiScenarioSolver.DEBUG:
+            kwds["symbolic_solver_labels"] = True
         results = super(GurobiMultiScenarioSolver, self)._set_instance(model, kwds)
+        if GurobiMultiScenarioSolver.DEBUG:
+            self._solver_model.write("problem.mps")
         self._add_scenarios(model)
         return results
 
@@ -157,7 +161,7 @@ class GurobiMultiScenarioSolver(GurobiDirect):
         Enabling debug will write the Gurobi problem and results files to allow inspection.
         """
         if GurobiMultiScenarioSolver.DEBUG:
-            self._solver_model.write("problem.lp")
+            self._solver_model.write("problem_with_scenarios.lp")
         results = super(GurobiMultiScenarioSolver, self)._apply_solver(*args, **kwargs)
         if GurobiMultiScenarioSolver.DEBUG:
             self._solver_model.write("results.json")
