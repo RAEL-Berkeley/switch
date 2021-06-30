@@ -12,20 +12,14 @@ from typing import List, Dict, Tuple
 # Third-party packages
 import numpy as np
 import pandas as pd
+from PIL import Image
 from matplotlib import pyplot as plt
 import seaborn as sns
 import matplotlib
+import plotnine
 
 # Local imports
 from switch_model.utilities import StepTimer, get_module_list
-
-
-class _GraphDataFolder:
-    """
-    Accessible via tools.folders.OUTPUTS or tools.folders.INPUTS.
-    """
-    OUTPUTS = "outputs"
-    INPUTS = "inputs"
 
 class Scenario:
     """
@@ -55,13 +49,114 @@ class Scenario:
         os.chdir(Scenario.root_path)
 
 
+class TransformTools:
+    """
+    Provides helper functions that transform dataframes
+    to add value. Can be accessed via tools.transform in graph() functions.
+    """
+
+    def __init__(self, graph_tools, time_zone="US/Pacific"):
+        self.time_zone = time_zone
+        self.tools = graph_tools
+
+    def gen_type(self, df: pd.DataFrame, map_name='default', gen_tech_col='gen_tech',
+                 energy_source_col='gen_energy_source'):
+        """
+        Returns a dataframe that contains a column 'gen_type'.
+
+        By default 'gen_type' is the aggregation of 'gen_tech' + 'gen_energy_source'
+        however this can be overidden in graph_tech_types.csv
+        """
+        # If there's no mapping, we simply make the mapping the sum of both columns
+        # Read the tech_colors and tech_types csv files.
+        try:
+            tech_types = self.tools.get_dataframe("graph_tech_types.csv", from_inputs=True)
+        except FileNotFoundError:
+            df = df.copy()
+            df['gen_type'] = df[gen_tech_col] + "_" + df[energy_source_col]
+            return df
+        filtered_tech_types = tech_types[tech_types['map_name'] == map_name][
+            ['gen_tech', 'energy_source', 'gen_type']]
+        df = df.merge(
+            filtered_tech_types,
+            left_on=[gen_tech_col, energy_source_col],
+            right_on=['gen_tech', 'energy_source'],
+            validate="many_to_one",
+            how="left")
+        df["gen_type"] = df["gen_type"].fillna("Other") # Fill with Other so the colors still work
+        return df
+
+    def build_year(self, df, build_year_col="build_year"):
+        """
+        Replaces all the build years that aren't a period with the value "Pre-existing".
+        """
+        # Get list of valid periods
+        periods = self.tools.get_dataframe("periods", from_inputs=True)["INVESTMENT_PERIOD"].astype("str")
+        df = df.copy()  # Make copy to not modify source
+        df[build_year_col] = df[build_year_col].apply(
+            lambda b: str(b) if str(b) in periods.values else "Pre-existing"
+        ).astype("category")
+        return df
+
+    def timestamp(self, df, timestamp_col="timestamp"):
+        """
+        Adds the following columns to the dataframe:
+        - time_row: by default the period but can be overridden by graph_timestamp_map.csv
+        - time_column: by default the timeseries but can be overridden by graph_timestamp_map.csv
+        - datetime: timestamp formatted as a US/Pacific Datetime object
+        - hour: The hour of the timestamp (US/Pacific timezone)
+        """
+        try:
+            timestamp_mapping = self.tools.get_dataframe("graph_timestamp_map.csv", from_inputs=True)
+        except FileNotFoundError:
+            timepoints = self.tools.get_dataframe("timepoints.csv", from_inputs=True)
+            timeseries = self.tools.get_dataframe(csv="timeseries.csv", from_inputs=True)
+
+            timepoints = timepoints.merge(
+                timeseries,
+                how='left',
+                left_on='timeseries',
+                right_on='TIMESERIES',
+                validate="many_to_one"
+            )
+
+            timestamp_mapping = timepoints[["timestamp", "ts_period", "timeseries"]]
+            timestamp_mapping.columns = ["timestamp", "time_row", "time_column"]
+
+        df = df.merge(
+            timestamp_mapping,
+            how='left',
+            left_on=timestamp_col,
+            right_on="timestamp",
+        )
+
+        # Add datetime and hour column
+        df["datetime"] = pd.to_datetime(df[timestamp_col], format="%Y%m%d%H").dt.tz_localize("utc").dt.tz_convert(
+            self.time_zone)
+        df["hour"] = df["datetime"].dt.hour
+
+        return df
+
+    def load_zone(self, df, load_zone_col="load_zone"):
+        """
+        Adds a 'region' column that is usually load_zone's state.
+        'region' is what comes before the first underscore. If no underscores are present
+        defaults to just using the load_zone.
+        """
+        df = df.copy() # Don't modify the source
+        df["region"] = df[load_zone_col].apply(
+            lambda z: z.partition("_")[0]
+        )
+        return df
+
+
 class GraphTools:
     """
     Object that is passed in graph().
     Provides utilities to make graphing easier and standardized.
     """
 
-    def __init__(self, scenarios: List[Scenario], graph_dir: str):
+    def __init__(self, scenarios: List[Scenario], graph_dir: str, skip_long: bool):
         """
         Create the GraphTools.
 
@@ -76,6 +171,7 @@ class GraphTools:
 
         self._scenarios: List[Scenario] = scenarios
         self.graph_dir = graph_dir
+        self.skip_long = skip_long
 
         # Here we store a mapping of csv file names to their dataframes.
         # Each dataframe has a column called 'scenario' that specifies which scenario
@@ -92,15 +188,14 @@ class GraphTools:
         # When in graph mode, we move between scenarios. This index specifies the current scenario
         self._active_scenario = None
         # Maps a file name to a tuple where the tuple holds (fig, axs), the matplotlib figure and axes
-        self._module_figures: Dict[str, Tuple] = {}
+        self._module_figures: Dict[str, List[Tuple]] = {}
 
         # Provide link to useful libraries
         self.sns = sns
         self.pd = pd
         self.np = np
         self.mplt = matplotlib
-
-        self.folders = _GraphDataFolder
+        self.pn = plotnine
 
         # Set the style to Seaborn default style
         sns.set()
@@ -108,14 +203,16 @@ class GraphTools:
         # Disables pandas warnings that will occur since we are constantly returning only a slice of our master dataframe
         pd.options.mode.chained_assignment = None
 
-    def _load_dataframe(self, csv, folder):
+        self.transform = TransformTools(self)
+
+    def _load_dataframe(self, path):
         """
         Reads a csv file for every scenario and returns a single dataframe containing
         the rows from every scenario with a column for the scenario name and index.
         """
         df_all_scenarios: List[pd.DataFrame] = []
         for i, scenario in enumerate(self._scenarios):
-            df = pd.read_csv(os.path.join(scenario.path, folder, csv + ".csv"), index_col=False)
+            df = pd.read_csv(os.path.join(scenario.path, path), index_col=False)
             df['scenario_name'] = scenario.name
             df['scenario_index'] = i
             df_all_scenarios.append(df)
@@ -127,9 +224,11 @@ class GraphTools:
         Create a set of matplotlib axes
         """
         num_subplot_columns = 1 if self._is_compare_mode else self._num_scenarios
-        fig = GraphTools._create_figure(out, size=(
-            size[0] * num_subplot_columns, size[1]
-        ), **kwargs)
+        fig = GraphTools._create_figure(
+            out,
+            size=(size[0] * num_subplot_columns, size[1]),
+            **kwargs
+        )
         ax = fig.subplots(nrows=1, ncols=num_subplot_columns, sharey='row')
 
         # If num_subplot_columns is 1, ax is not a list but we want it to be a list
@@ -145,17 +244,16 @@ class GraphTools:
         return fig, ax
 
     @staticmethod
-    def _create_figure(out, title=None, note=None, size=None, xlabel=None, ylabel=None, **kwargs):
+    def _create_figure(name, title=None, note=None, size=None, xlabel=None, ylabel=None, **kwargs):
         fig = plt.figure(**kwargs)
 
         # Set a title for the figure
         if title is None:
-            warnings.warn(f"No title set for graph {out}.csv. Specify 'title=' in get_new_axes() or get_new_figure().")
+            warnings.warn(f"No title set for graph {name}.csv. Specify 'title=' in get_new_axes() or get_new_figure().")
         else:
             fig.suptitle(title)
 
-        if note is not None:
-            fig.text(0.5, -0.1, note, wrap=True, horizontalalignment='center', fontsize=10)
+        GraphTools._add_note(fig, note)
 
         # Set figure size based on numbers of subplots
         if size is not None:
@@ -168,38 +266,61 @@ class GraphTools:
 
         return fig
 
-    def get_new_axes(self, out, *args, **kwargs):
+    @staticmethod
+    def _add_note(fig, note):
+        if note is not None:
+            fig.text(0.5, -0.1, note, wrap=True, horizontalalignment='center', fontsize=10)
+
+    def get_axes(self, out, *args, **kwargs):
         """Returns a set of matplotlib axes that can be used to graph."""
         # If we're on the first scenario, we want to create the set of axes
         if self._is_compare_mode or self._active_scenario == 0:
-            self._module_figures[out] = self._create_axes(out, *args, **kwargs)
+            self._module_figures[out] = [self._create_axes(out, *args, **kwargs)]
 
         # Fetch the axes in the (fig, axs) tuple then select the axis for the active scenario
-        return self._module_figures[out][1][0 if self._is_compare_mode else self._active_scenario]
+        return self._module_figures[out][0][1][0 if self._is_compare_mode else self._active_scenario]
 
-    def get_new_figure(self, out, *args, **kwargs):
-        # Append the scenario name to the file name if we have multiple scenarios
-        if self._num_scenarios > 1:
-            out += "_" + self._scenarios[self._active_scenario].name
+    def get_figure(self, out, *args, **kwargs):
         # Create the figure
-        fig = self._create_figure(out, *args, **kwargs)
+        fig = GraphTools._create_figure(out, *args, **kwargs)
         # Save it to the outputs
-        self._module_figures[out] = (fig, None)
+        self.save_figure(out, fig)
         # Return the figure
         return fig
 
-    def get_dataframe(self, csv, folder=_GraphDataFolder.OUTPUTS):
-        """Returns the dataframe for the active scenario. """
-        if csv not in self._dfs:
-            self._dfs[csv] = self._load_dataframe(csv, folder)
+    def save_figure(self, out, fig):
+        # If we have multiple scenarios, leave a note under each indicating the scenario
+        if self._num_scenarios > 1:
+            self._add_note(fig, "Scenario: " + self._scenarios[self._active_scenario].name)
+        if out not in self._module_figures:
+            self._module_figures[out] = []
+        # Add the figure to the list of figures for that scenario
+        self._module_figures[out].append((fig, None))
 
-        df_copy = self._dfs[csv].copy()  # We return a copy so the source isn't modified
+    def get_dataframe(self, csv, folder=None, from_inputs=False):
+        """Returns the dataframe for the active scenario. """
+        # Add file extension of missing
+        if len(csv) < 5 or csv[-4:] != ".csv":
+            csv += ".csv"
+        # Select folder if not specified
+        if folder is None:
+            folder = "inputs" if from_inputs else "outputs"
+        # Get dataframe path
+        path = os.path.join(folder, csv)
+
+        # If doesn't exist, create it
+        if path not in self._dfs:
+            self._dfs[path] = self._load_dataframe(path)
+
+        df = self._dfs[path].copy()  # We return a copy so the source isn't modified
 
         # If we're not comparing, we only return the rows corresponding to the active scenario
         if not self._is_compare_mode:
-            df_copy = df_copy[df_copy['scenario_index'] == self._active_scenario]
+            df = df[df['scenario_index'] == self._active_scenario]
+            df = df.drop("scenario_index", axis=1).drop("scenario_name", axis=1)
 
-        return df_copy
+
+        return df
 
     def graph_module(self, func_graph):
         """Runs the graphing function for each comparison run"""
@@ -225,37 +346,50 @@ class GraphTools:
         self._save_plots()
 
     def _save_plots(self):
-        for name, (fig, _) in self._module_figures.items():
-            fig.savefig(os.path.join(self.graph_dir, name), bbox_inches="tight")
+        for name, figures in self._module_figures.items():
+            for i, (fig, _) in enumerate(figures):
+                out = name
+                # If we have multiple figures append an index to allow concat to work
+                if len(figures) > 1:
+                    out += "_" + str(i)
+                fig.savefig(os.path.join(self.graph_dir, out), bbox_inches="tight")
+            # If we have multiple figures, concat them into a single one
+            if len(figures) > 1:
+                GraphTools._concat_figures(os.path.join(self.graph_dir, name), len(figures))
         # Reset our module_figures dict
         self._module_figures = {}
 
-    def get_active_scenario_path(self):
-        """Returns the path of the current scenario folder."""
-        return self._scenarios[self._active_scenario].path
+    @staticmethod
+    def _concat_figures(basepath, n):
+        """
+        This function merges n figures together side by side.
+        The figures must have the same base path and only differ in their suffix
+        (_0.png, _1.png, _2.png etc).
+        """
+        # Get the paths of each image
+        image_paths = tuple(basepath + "_" + str(i) + ".png" for i in range(n))
+        # Open each image
+        images = tuple(Image.open(path) for path in image_paths)
 
-    def add_gen_type_column(self, df: pd.DataFrame, map_name='default', gen_tech_col='gen_tech',
-                            energy_source_col='gen_energy_source'):
-        """
-        Returns a dataframe that contains a column called gen_type which
-        is essentially a group of the gen_tech and gen_energy_source columns.
-        """
-        # If there's no mapping, we simply make the mapping the sum of both columns
-        # Read the tech_colors and tech_types csv files.
-        try:
-            tech_types = self.get_dataframe(csv="graph_tech_types", folder=self.folders.INPUTS)
-        except FileNotFoundError:
-            df = df.copy()
-            df['gen_type'] = df[gen_tech_col] + "_" + df[energy_source_col]
-            return df
-        filtered_tech_types = tech_types[tech_types['map_name'] == map_name][
-            ['gen_tech', 'energy_source', 'gen_type']]
-        return df.merge(
-            filtered_tech_types,
-            left_on=[gen_tech_col, energy_source_col],
-            right_on=['gen_tech', 'energy_source'],
-            validate="many_to_one"
-        )
+        # Get the dimension of our final figure
+        height = max(map(lambda x: x.size[1], images))
+        width = sum(map(lambda x: x.size[0], images))
+
+        # Create our final figure
+        concated = Image.new("RGB", (width, height), "white")
+
+        # For each image, paste it into
+        x = 0
+        for image in images:
+            concated.paste(image, (x, 0))
+            x += image.size[0]
+
+        # Save the concated image
+        concated.save(basepath + ".png", "PNG")
+
+        # Delete the individual images
+        for image_path in image_paths:
+            os.remove(image_path)
 
     def get_colors(self, n=None, map_name='default'):
         """
@@ -264,7 +398,7 @@ class GraphTools:
         @param map_name is the name of the technology mapping in use
         """
         try:
-            tech_colors = self.get_dataframe(csv="graph_tech_colors", folder=self.folders.INPUTS)
+            tech_colors = self.get_dataframe(csv="graph_tech_colors.csv", from_inputs=True)
         except:
             return None
         filtered_tech_colors = tech_colors[tech_colors['map_name'] == map_name]
@@ -273,55 +407,15 @@ class GraphTools:
         else:
             return {r['gen_type']: r['color'] for _, r in filtered_tech_colors.iterrows()}
 
-    def add_timestamp_info(self, df, timestamp_col="timestamp"):
-        """
-        Adds two time dimensions to the table as well as the timestamp weight.
-        Can read the dimensions from graph_timestamps.csv.
-        graph_timestamps.csv should have columns timestamp,time_1,time_2,weight
-        """
-        try:
-            timestamp_mapping = self.get_dataframe(csv="graph_timestamp_map", folder=self.folders.INPUTS)
-        except FileNotFoundError:
-            timepoints = self.get_dataframe(csv="timepoints", folder=self.folders.INPUTS)
-            timeseries = self.get_dataframe(csv="timeseries", folder=self.folders.INPUTS)
-
-            timepoints = timepoints.merge(
-                timeseries,
-                how='left',
-                left_on='timeseries',
-                right_on='TIMESERIES',
-                validate="many_to_one"
-            )
-
-            timestamp_mapping = timepoints[["timestamp", "ts_period", "timeseries"]]
-            timestamp_mapping.columns = ["timestamp", "time_row", "time_column"]
-        df = df.merge(
-            timestamp_mapping,
-            how='left',
-            left_on=timestamp_col,
-            right_on="timestamp",
-        )
-
-        # Add hour column
-        df["hour"] = pd.to_datetime(df[timestamp_col], format="%Y%m%d%H") \
-            .dt \
-            .tz_localize("utc") \
-            .dt \
-            .tz_convert("US/Pacific") \
-            .dt \
-            .hour
-
-        return df
-
     def graph_time_matrix(self, df, value_column, out, title, ylabel):
         # Add the technology type column and filter out unneeded columns
-        df = self.add_gen_type_column(df)
+        df = self.transform.gen_type(df)
         # Keep only important columns
         df = df[["gen_type", "timestamp", value_column]]
         # Sum the values for all technology types and timepoints
         df = df.groupby(["gen_type", "timestamp"], as_index=False).sum()
         # Add the columns time_row and time_column
-        df = self.add_timestamp_info(df)
+        df = self.transform.timestamp(df)
         # Sum across all technologies that are in the same hour and quarter
         df = df.groupby(["hour", "gen_type", "time_column", "time_row"], as_index=False).mean()
 
@@ -332,7 +426,7 @@ class GraphTools:
             columns = df[df["time_row"] == row]["time_column"].drop_duplicates()
             ncols = max(ncols, len(columns))
         ncols = min(ncols, 8)
-        fig = self.get_new_figure(
+        fig = self.get_figure(
             out=out,
             title=title,
             size=(10 * ncols / nrows, 8),
@@ -398,7 +492,16 @@ class GraphTools:
         legend_pairs = legend.items()
         fig.legend([h for _, h in legend_pairs], [l for l, _ in legend_pairs])
 
-def graph_scenarios(scenarios: List[Scenario], graph_dir):
+    @staticmethod
+    def sort_build_years(x):
+        def val(v):
+            r = v if v != "Pre-existing" else "000"
+            return r
+
+        xm = x.map(val)
+        return xm
+
+def graph_scenarios(scenarios: List[Scenario], graph_dir, skip_long=False):
     # Start a timer
     timer = StepTimer()
 
@@ -410,7 +513,7 @@ def graph_scenarios(scenarios: List[Scenario], graph_dir):
         return
 
     # Initialize the graphing tool
-    graph_tools = GraphTools(scenarios=scenarios, graph_dir=graph_dir)
+    graph_tools = GraphTools(scenarios=scenarios, graph_dir=graph_dir, skip_long=skip_long)
 
     # Loop through every graphing module
     print(f"Graphing modules:")
