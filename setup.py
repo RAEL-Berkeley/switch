@@ -79,7 +79,8 @@ setup(
         "seaborn",
         "plotnine",
         "scipy",
-        "tabulate"
+        "tabulate",
+        "PIL",
     ],
     extras_require={
         # packages used for advanced demand response, progressive hedging
