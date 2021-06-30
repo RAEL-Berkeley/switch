@@ -199,7 +199,7 @@ def pre_construct(mod, inputs_dir):
     If a multi_scenario.csv file exists, loads the inputs from that file
     """
     df = pd.read_csv(os.path.join(inputs_dir, "multi_scenario.csv"), index_col=False)
-    assert (df.columns.values == ["scenario", "param", "value", "INDEX_1", "INDEX_2", "INDEX_3", "INDEX_4"]).all()
+    assert (df.columns.values[0:3] == ["scenario", "param", "value"]).all()
 
     scenarios = {}
 

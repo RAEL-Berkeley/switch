@@ -96,7 +96,7 @@ def drop_previous_candidate_storage():
 
 def create_multi_scenario(costs_scenarios):
     if costs_scenarios.empty:
-        return False
+        return
 
     costs_scenarios = costs_scenarios.drop("gen_fixed_om", axis=1)
 
@@ -114,7 +114,10 @@ def create_multi_scenario(costs_scenarios):
 
     costs_scenarios = costs_scenarios[["scenario", "param", "value", "INDEX_1", "INDEX_2"]]
     costs_scenarios.to_csv("multi_scenario.csv", index=False)
-    return True
+
+    # Add multi scenario module to modules.txt
+    with open("modules.txt", "a") as f:
+        f.write("switch_model.utilities.multi_scenario\n")
 
 def main(run_post_solve=True, scenario_config=None, change_dir=True):
     print("Adding candidate storage from GSheets...")
@@ -146,7 +149,7 @@ def main(run_post_solve=True, scenario_config=None, change_dir=True):
     append_to_csv("gen_build_costs.csv", baseline, primary_key=["GENERATION_PROJECT", "build_year"])
 
     # Create multi_scenario
-    using_multi_scenario = create_multi_scenario(multi_scenarios)
+    create_multi_scenario(multi_scenarios)
 
     # Change plants with _ALL_ZONES to a plant in every zone
     if run_post_solve:
@@ -163,8 +166,6 @@ def main(run_post_solve=True, scenario_config=None, change_dir=True):
     pd.concat([
         pd.read_csv("graph_tech_types.csv", index_col=False), gen_type
     ]).to_csv("graph_tech_types.csv", index=False)
-
-    return using_multi_scenario
 
 
 if __name__ == "__main__":

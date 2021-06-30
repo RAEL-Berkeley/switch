@@ -116,13 +116,11 @@ def main():
         query_db(full_config, skip_cf=args.skip_cf)
     if "add_storage" in full_config:
         from switch_model.tools.add_storage import main
-        using_multi_scenario = main(
+        main(
             run_post_solve=False,  # We will run post solve automatically right afterwards
             scenario_config=full_config["add_storage"],
             change_dir=False
         )
-        if using_multi_scenario:
-            modules.append("switch_model.utilities.multi_scenario")
     post_process()
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
 
