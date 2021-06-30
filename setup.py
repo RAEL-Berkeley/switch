@@ -80,7 +80,7 @@ setup(
         "plotnine",
         "scipy",
         "tabulate",
-        "PIL",
+        "pillow",  # Image processing to make plots stick together
     ],
     extras_require={
         # packages used for advanced demand response, progressive hedging
