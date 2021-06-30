@@ -724,6 +724,10 @@ def solve(model):
         if len(model.multi_scenarios) > 1:
             model.options.solver = "gurobi_scenarios"
             kwargs["scenarios"] = model.multi_scenarios
+            if model.options.solver_options_string is not None:
+                model.options.solver_options_string = None
+                warn("multi_scenario module does not support the use of --solver-options-string, parameter"
+                     " ignored. If you are using --recommended, you can safely ignore this message.")
 
         # Create a solver object the first time in. We don't do this until a solve is
         # requested, because sometimes a different solve function may be used,
