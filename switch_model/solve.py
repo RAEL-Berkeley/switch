@@ -748,7 +748,7 @@ def solve(model):
             iis_file_path = os.path.join(model.options.outputs_dir, "iis.ilp")
             model.options.solver_options_string += " ResultFile={}".format(iis_file_path)
 
-        if model.options.threads is None:
+        if model.options.threads is not None:
             # If no string is passed make the string empty so we can add to it
             if model.options.solver_options_string is None:
                 model.options.solver_options_string = ""
