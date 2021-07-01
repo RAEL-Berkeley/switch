@@ -242,7 +242,7 @@ def post_solve_start(instance):
     # The outputs dir
     outputs_dir = getattr(instance.options, "outputs_dir", "outputs")
 
-    # If we have multiple scenarios
+    # If we have only one scenario just run post solve
     if len(instance.multi_scenarios) == 1:
         instance.run_modules("post_solve", instance, outputs_dir, soft_exceptions=True)
         return
@@ -251,20 +251,20 @@ def post_solve_start(instance):
     for scenario in instance.multi_scenarios:
         if instance.options.verbose:
             print(f"Executing post solve for scenario: {scenario.name}")
-        # If we are a multi_scenario we move into the scenario folder
-        # Create the outputs_dir if it doesn't exist
+        # Create the scenario_dir if it doesn't exist
         scenario_dir = os.path.join(outputs_dir, scenario.name)
         if not os.path.exists(scenario_dir):
             os.mkdir(scenario_dir)
 
         # Run post solve
-        # Note that with scenario(instance) will set the variables
+        # Note that 'with scenario(instance):' will set the variables
         # to be the results of that scenario
         with scenario(instance):
             instance.run_modules("post_solve", instance, scenario_dir, soft_exceptions=True)
 
 
 def post_solve_graph(instance):
+    # If just one scenario, run the graphing with only one scenario
     if len(instance.multi_scenarios) == 1:
         graph_scenarios([Scenario()], verbose=False)
         return
@@ -787,6 +787,8 @@ def solve(model):
         kwargs = dict(solver_io=model.options.solver_io)
 
         if len(model.multi_scenarios) > 1:
+            if model.options.solver != "gurobi":
+                raise Exception("multi_scenarios module only supports Gurobi. Use '--solver gurobi'.")
             model.options.solver = "gurobi_scenarios"
             kwargs["scenarios"] = model.multi_scenarios
 
