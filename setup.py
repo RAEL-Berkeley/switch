@@ -79,7 +79,8 @@ setup(
         "seaborn",
         "plotnine",
         "scipy",
-        "tabulate"
+        "tabulate",
+        "pillow",  # Image processing to make plots stick together
     ],
     extras_require={
         # packages used for advanced demand response, progressive hedging

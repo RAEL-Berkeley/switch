@@ -72,7 +72,7 @@ modules = [
 ]
 
 
-def switch_to_input_dir(config):
+def switch_to_input_dir(config, overwrite):
     inputs_dir = config["inputs_dir"]
 
     # Create inputs_dir if it doesn't exist
@@ -80,7 +80,7 @@ def switch_to_input_dir(config):
         os.makedirs(inputs_dir)
         print("Inputs directory created.")
     else:
-        if not query_yes_no(
+        if not overwrite and not query_yes_no(
             "Inputs directory already exists. Allow contents to be overwritten?"
         ):
             raise Exception("User cancelled run.")
@@ -104,14 +104,23 @@ def main():
                              "want to wait for the command.")
     parser.add_argument("--post-only", default=False, action='store_true',
                         help="Only run the post solve functions (don't query db)")
+    parser.add_argument("--overwrite", default=False, action="store_true",
+                        help="If specified, will not prompt before overwriting previous inputs folder.")
     args = parser.parse_args()  # Makes switch get_inputs --help works
 
     # Load values from config.yaml
     full_config = load_config()
-    switch_to_input_dir(full_config)
+    switch_to_input_dir(full_config, args.overwrite)
 
     if not args.post_only:
         query_db(full_config, skip_cf=args.skip_cf)
+    if "add_storage" in full_config:
+        from switch_model.tools.add_storage import main
+        main(
+            run_post_solve=False,  # We will run post solve automatically right afterwards
+            scenario_config=full_config["add_storage"],
+            change_dir=False
+        )
     post_process()
     print(f"\nScript took {timer.step_time_as_str()} seconds to build input tables.")
 
@@ -204,6 +213,31 @@ def query_db(full_config, skip_cf):
     print("switch_inputs_version.txt...")
 
     ########################################################
+    # Create temporary table called temp_generation_plant_ids
+    # This table has one column (generation_plant_id) containing
+    # the plant ids for this scenario
+    # This table can be joined on to filter out unused generation plants as follow
+    # JOIN temp_generation_plant_ids USING(generation_plant_id)
+    db_cursor.execute(
+        f"""
+        CREATE TEMPORARY TABLE temp_generation_plant_ids (
+            generation_plant_id integer
+        );
+        
+        INSERT INTO temp_generation_plant_ids (
+            SELECT generation_plant_id
+        FROM generation_plant_scenario_member
+            WHERE generation_plant_scenario_id={generation_plant_scenario_id}
+        UNION
+        SELECT generation_plant_id
+            FROM generation_plant_scenario_group_member
+            JOIN generation_plant_group_member USING (generation_plant_group_id)
+                WHERE generation_plant_scenario_id={generation_plant_scenario_id}
+        );
+        """
+    )
+
+    ########################################################
     # TIMESCALES
 
     # periods.csv
@@ -253,7 +287,8 @@ def query_db(full_config, skip_cf):
             where
               sampled_timeseries.time_sample_id = {time_sample_id}
             order by
-              label;""",
+                label desc,
+                timeseries desc;""",
     )
 
     # timepoints.csv
@@ -509,7 +544,8 @@ def query_db(full_config, skip_cf):
             "gen_can_provide_cap_reserves",
             "gen_self_discharge_rate",
             "gen_discharge_efficiency",
-            "gen_land_use_rate"
+            "gen_land_use_rate",
+            "gen_storage_energy_to_power_ratio"
         ],
         f"""
             select
@@ -535,10 +571,11 @@ def query_db(full_config, skip_cf):
             1 as gen_can_provide_cap_reserves,
             daily_self_discharge_rate,
             discharge_efficiency,
-            land_use_rate
+            land_use_rate,
+            gen_storage_energy_to_power_ratio
             from switch.generation_plant as t
             join switch.load_zone as t2 using(load_zone_id)
-            join switch.generation_plant_scenario_member using(generation_plant_id)
+            JOIN temp_generation_plant_ids USING(generation_plant_id)
             join switch.variable_o_m_costs as vom
             on vom.gen_tech = t.gen_tech
             and vom.energy_source = t.energy_source
@@ -547,7 +584,6 @@ def query_db(full_config, skip_cf):
             and gt.energy_source = t.energy_source
             where variable_o_m_cost_scenario_id = {variable_o_m_cost_scenario_id}
             and generation_plant_technologies_scenario_id = {generation_plant_technologies_scenario_id}
-            and generation_plant_scenario_id={generation_plant_scenario_id}
             order by gen_dbid;
             """,
     )
@@ -560,9 +596,8 @@ def query_db(full_config, skip_cf):
         f"""select generation_plant_id, build_year, capacity as gen_predetermined_cap, gen_predetermined_storage_energy_mwh
                 from generation_plant_existing_and_planned
                 join generation_plant as t using(generation_plant_id)
-                join generation_plant_scenario_member using(generation_plant_id)
-                where generation_plant_scenario_id={generation_plant_scenario_id}
-                and generation_plant_existing_and_planned_scenario_id={generation_plant_existing_and_planned_scenario_id}
+                JOIN temp_generation_plant_ids USING(generation_plant_id)
+                WHERE generation_plant_existing_and_planned_scenario_id={generation_plant_existing_and_planned_scenario_id}
                 ;
                 """,
     )
@@ -584,10 +619,9 @@ def query_db(full_config, skip_cf):
             storage_energy_capacity_cost_per_mwh as gen_storage_energy_overnight_cost
         FROM generation_plant_cost
           JOIN generation_plant_existing_and_planned USING (generation_plant_id)
-          JOIN generation_plant_scenario_member using(generation_plant_id)
+          JOIN temp_generation_plant_ids USING(generation_plant_id)
           join generation_plant as t1 using(generation_plant_id)
-        WHERE generation_plant_scenario_id={generation_plant_scenario_id}
-          AND generation_plant_cost.generation_plant_cost_scenario_id={generation_plant_cost_scenario_id}
+        WHERE generation_plant_cost.generation_plant_cost_scenario_id={generation_plant_cost_scenario_id}
           AND generation_plant_existing_and_planned_scenario_id={generation_plant_existing_and_planned_scenario_id}
         UNION
         SELECT generation_plant_id, period.label,
@@ -596,10 +630,9 @@ def query_db(full_config, skip_cf):
         FROM generation_plant_cost
           JOIN generation_plant using(generation_plant_id)
           JOIN period on(build_year>=start_year and build_year<=end_year)
-          JOIN generation_plant_scenario_member using(generation_plant_id)
+          JOIN temp_generation_plant_ids USING(generation_plant_id)
           join generation_plant as t1 using(generation_plant_id)
-        WHERE generation_plant_scenario_id={generation_plant_scenario_id}
-          AND period.study_timeframe_id={study_timeframe_id}
+        WHERE period.study_timeframe_id={study_timeframe_id} 
           AND generation_plant_cost.generation_plant_cost_scenario_id={generation_plant_cost_scenario_id}
         GROUP BY 1,2
         ORDER BY 1,2;""",
@@ -633,10 +666,9 @@ def query_db(full_config, skip_cf):
                     -- performance wise this doesn't have any significant impact
                     case when abs(capacity_factor) < 0.00001 then 0 else capacity_factor end
                 FROM variable_capacity_factors_exist_and_candidate_gen v
-                    JOIN generation_plant_scenario_member USING(generation_plant_id)
+                    JOIN temp_generation_plant_ids USING(generation_plant_id)
                     JOIN sampled_timepoint as t ON(t.raw_timepoint_id = v.raw_timepoint_id)
-                WHERE generation_plant_scenario_id = {generation_plant_scenario_id}
-                    AND t.time_sample_id={time_sample_id};
+                WHERE t.time_sample_id={time_sample_id};
                 """,
         )
 
@@ -675,9 +707,8 @@ def query_db(full_config, skip_cf):
         from hydro_historical_monthly_capacity_factors
             join sampled_timeseries on(month = date_part('month', first_timepoint_utc) and year = date_part('year', first_timepoint_utc))
             join generation_plant using (generation_plant_id)
-            join generation_plant_scenario_member using(generation_plant_id)
-        where generation_plant_scenario_id = {generation_plant_scenario_id}
-        and hydro_simple_scenario_id={hydro_simple_scenario_id}
+            JOIN temp_generation_plant_ids USING(generation_plant_id)
+        where hydro_simple_scenario_id={hydro_simple_scenario_id}
             and time_sample_id = {time_sample_id}
         order by 1;
         """,
@@ -881,6 +912,14 @@ def query_db(full_config, skip_cf):
         planning_reserves(db_cursor, time_sample_id, hydro_simple_scenario_id)
     create_modules_txt()
 
+    # Make graphing files
+    graph_config = os.path.join(os.path.dirname(__file__), "graph_config")
+    print("graph_tech_colors.csv...")
+    shutil.copy(os.path.join(graph_config, "graph_tech_colors.csv"), "graph_tech_colors.csv")
+    print("graph_tech_types.csv...")
+    shutil.copy(os.path.join(graph_config, "graph_tech_types.csv"), "graph_tech_types.csv")
+
+
 
 def ca_policies(db_cursor, ca_policies_scenario_id, study_timeframe_id):
     if ca_policies_scenario_id is None:
@@ -997,12 +1036,6 @@ def create_modules_txt():
 
 def post_process():
     fix_prebuild_conflict_bug()
-    # Graphing post process
-    graph_config = os.path.join(os.path.dirname(__file__), "graph_config")
-    print("graph_tech_colors.csv...")
-    shutil.copy(os.path.join(graph_config, "graph_tech_colors.csv"), "graph_tech_colors.csv")
-    print("graph_tech_types.csv...")
-    shutil.copy(os.path.join(graph_config, "graph_tech_types.csv"), "graph_tech_types.csv")
     create_graph_timestamp_map()
     replace_plants_in_zone_all()
 
@@ -1019,8 +1052,9 @@ def fix_prebuild_conflict_bug():
         return
 
     # Read two files that need modification
-    gen_build_costs = pd.read_csv("gen_build_costs.csv", index_col=False)
-    gen_build_predetermined = pd.read_csv("gen_build_predetermined.csv", index_col=False)
+    gen_build_costs = pd.read_csv("gen_build_costs.csv", index_col=False, dtype={"GENERATION_PROJECT": int})
+    gen_build_predetermined = pd.read_csv("gen_build_predetermined.csv", index_col=False,
+                                          dtype={"GENERATION_PROJECT": int})
     # Save their size
     rows_prior = gen_build_costs.size, gen_build_predetermined.size
     # Save columns of gen_build_costs
@@ -1085,18 +1119,22 @@ def replace_plants_in_zone_all():
     def replace_rows(plants_to_copy, filename, df=None, plants_col="GENERATION_PROJECT", load_column=None):
         # If the df does not already exist, read the file
         if df is None:
+            if not os.path.exists(filename):
+                return
+
             df = pd.read_csv(filename, index_col=False)
 
         # Save the columns for later use
         df_col = df.columns
         df_rows = len(df)
 
-        # Force the plants_col to string type to allow concating
-        df = df.astype({plants_col: str})
-
         # Extract the rows that need copying
         should_copy = df[plants_col].isin(plants_to_copy)
         rows_to_copy = df[should_copy]
+
+        if rows_to_copy.empty:
+            return
+
         # Filter out the plants that need replacing from our data frame
         df = df[~should_copy]
         # replacement is the cross join of the plants that need replacement
@@ -1107,7 +1145,7 @@ def replace_plants_in_zone_all():
             on='key',
         )
 
-        replacement[plants_col] = replacement[plants_col] + replacement["dbid_suffix"]
+        replacement[plants_col] = replacement[plants_col].astype(str) + replacement["dbid_suffix"]
 
         if load_column is not None:
             # Set gen_load_zone to be the LOAD_ZONE column
@@ -1123,7 +1161,7 @@ def replace_plants_in_zone_all():
 
         df.to_csv(filename, index=False)
 
-    plants = pd.read_csv("generation_projects_info.csv", index_col=False)
+    plants = pd.read_csv("generation_projects_info.csv", index_col=False, dtype={"GENERATION_PROJECT": int})
     # Find the plants that need replacing
     to_replace = plants[plants["gen_load_zone"] == "_ALL_ZONES"]
     # If no plant needs replacing end there
@@ -1131,16 +1169,17 @@ def replace_plants_in_zone_all():
         return
     # If to_replace has variable capacity factors we raise exceptions
     # since the variabale capacity factors won't be the same across zones
-    if not all(to_replace["gen_is_variable"] == 0):
+    if any(to_replace["gen_is_variable"] == 1):
         raise Exception("generation_projects_info.csv contains variable plants "
                         "with load zone _ALL_ZONES. This is not allowed since "
                         "copying variable capacity factors to all "
                         "zones is not implemented (and likely unwanted).")
 
     plants_to_replace = to_replace["GENERATION_PROJECT"]
-    replace_rows(plants_to_replace, "generation_projects_info.csv", load_column="gen_load_zone")
+    replace_rows(plants_to_replace, "generation_projects_info.csv", load_column="gen_load_zone", df=plants)
     replace_rows(plants_to_replace, "gen_build_costs.csv")
     replace_rows(plants_to_replace, "gen_build_predetermined.csv")
+    replace_rows(plants_to_replace, "multi_scenario.csv", plants_col="INDEX_1")
 
 
 

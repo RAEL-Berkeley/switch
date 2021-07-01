@@ -24,6 +24,10 @@ def main():
                         help="Don't prompt before overwriting the existing folder")
     parser.add_argument("--names", nargs="+", default=None,
                         help="Names of the scenarios")
+    parser.add_argument("--skip-long", default=False, action="store_true",
+                        help="Skips plots that take a long time to generate. Useful when debugging"
+                             " and wanting to test a new plot without needing to wait for existing"
+                             " plots to generate.")
 
     # Parse the parameters
     args = parser.parse_args()
@@ -45,4 +49,4 @@ def main():
     scenarios = [Scenario(rel_path, args.names[i]) for i, rel_path in enumerate(args.scenarios)]
 
     # Create the graphs!
-    graph_scenarios(scenarios, graph_dir=args.graph_dir, overwrite=args.overwrite)
+    graph_scenarios(scenarios, graph_dir=args.graph_dir, overwrite=args.overwrite, skip_long=args.skip_long)
